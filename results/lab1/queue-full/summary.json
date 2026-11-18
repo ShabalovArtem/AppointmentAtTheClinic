@@ -7,10 +7,10 @@
     "workers": 4
   },
   "load_seconds": 30.1,
-  "submits": 10272,
+  "submits": 10265,
   "statuses": {
-    "202": 287,
-    "429": 9985
+    "202": 288,
+    "429": 9977
   },
   "all_429_have_retry_after": true,
   "refused_checked": 500,
@@ -18,93 +18,93 @@
   "max_queue_length": 50,
   "max_processing": 4,
   "health": {
-    "n": 575,
+    "n": 576,
     "errors": 0,
-    "p50_ms": 1.35,
-    "p95_ms": 3.61,
-    "p99_ms": 7.32,
-    "max_ms": 43.15
+    "p50_ms": 1.38,
+    "p95_ms": 3.79,
+    "p99_ms": 6.4,
+    "max_ms": 39.48
   },
   "accepted_final_states": {
-    "done": 287
+    "done": 288
   },
   "timing_this_run_ms": {
     "queue_wait_ms": {
-      "n": 287,
-      "p50": 6378.0,
-      "p95": 6920.6,
-      "p99": 7098.7
+      "n": 288,
+      "p50": 6240.1,
+      "p95": 6829.1,
+      "p99": 7035.6
     },
     "processing_ms": {
-      "n": 287,
-      "p50": 520.8,
-      "p95": 759.1,
-      "p99": 800.1
+      "n": 288,
+      "p50": 529.5,
+      "p95": 768.3,
+      "p99": 795.0
     },
     "total_ms": {
-      "n": 287,
-      "p50": 6871.3,
-      "p95": 7498.0,
-      "p99": 7686.5
+      "n": 288,
+      "p50": 6741.6,
+      "p95": 7471.1,
+      "p99": 7632.0
     },
     "delivery_wait_ms": {
-      "n": 287,
-      "p50": 18980.1,
-      "p95": 35063.6,
-      "p99": 36819.4
+      "n": 288,
+      "p50": 20211.9,
+      "p95": 35699.6,
+      "p99": 37026.4
     }
   },
   "server_metrics_after": {
-    "uptime_s": 43.0,
+    "uptime_s": 43.6,
     "latency_ms": {
-      "p50": 42.9,
-      "p95": 49.1,
-      "p99": 51.4
+      "p50": 43.1,
+      "p95": 50.4,
+      "p99": 58.4
     },
     "in_flight": 1,
     "responses": {
-      "200": 996,
-      "202": 287,
+      "200": 999,
+      "202": 288,
       "404": 500,
-      "429": 9985
+      "429": 9977
     },
     "queue_length": 0,
     "queue_capacity": 50,
     "workers": 4,
     "processing": 0,
-    "accepted": 287,
-    "rejected": 9985,
+    "accepted": 288,
+    "rejected": 9977,
     "rejected_shutdown": 0,
     "outcomes": {
-      "done": 287,
+      "done": 288,
       "rejected": 0,
       "failed": 0
     },
     "timing_order_violations": 0,
     "timing_ms": {
       "queue_wait_ms": {
-        "n": 287,
-        "p50": 6378.0,
-        "p95": 6920.6,
-        "p99": 7098.7
+        "n": 288,
+        "p50": 6240.1,
+        "p95": 6829.1,
+        "p99": 7035.6
       },
       "processing_ms": {
-        "n": 287,
-        "p50": 520.8,
-        "p95": 759.1,
-        "p99": 800.1
+        "n": 288,
+        "p50": 529.5,
+        "p95": 768.3,
+        "p99": 795.0
       },
       "total_ms": {
-        "n": 287,
-        "p50": 6871.3,
-        "p95": 7498.0,
-        "p99": 7686.5
+        "n": 288,
+        "p50": 6741.6,
+        "p95": 7471.1,
+        "p99": 7632.0
       },
       "delivery_wait_ms": {
-        "n": 287,
-        "p50": 18980.1,
-        "p95": 35063.6,
-        "p99": 36819.4
+        "n": 288,
+        "p50": 20211.9,
+        "p95": 35699.6,
+        "p99": 37026.4
       }
     },
     "resource_mode": "locked"
@@ -115,10 +115,12 @@
     "specialty": "терапевт",
     "day": "2026-12-01",
     "slots_total": 100000,
-    "slots_taken": 1497,
-    "slots_free": 98503,
-    "booked": 1497,
-    "bookings": 1497,
+    "slots_taken": 290,
+    "slots_free": 99710,
+    "closed": false,
+    "booked": 290,
+    "bookings": 289,
+    "web_bookings": 1,
     "invariant_ok": true
   }
 }

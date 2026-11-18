@@ -7,13 +7,13 @@
     "202": 40
   },
   "final_states": {
-    "rejected": 20,
-    "done": 20
+    "done": 20,
+    "rejected": 20
   },
   "reasons": {
     "no-free-slots": 20
   },
-  "seconds": 5.91,
+  "seconds": 5.95,
   "resource_before": {
     "id": "race-locked",
     "doctor_id": "doc-3",
@@ -22,8 +22,10 @@
     "slots_total": 20,
     "slots_taken": 0,
     "slots_free": 20,
+    "closed": false,
     "booked": 0,
     "bookings": 0,
+    "web_bookings": 0,
     "invariant_ok": true
   },
   "resource_after": {
@@ -34,8 +36,10 @@
     "slots_total": 20,
     "slots_taken": 20,
     "slots_free": 0,
+    "closed": false,
     "booked": 20,
     "bookings": 20,
+    "web_bookings": 0,
     "invariant_ok": true
   }
 }

@@ -24,6 +24,7 @@ import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
 
+import psycopg
 from fastapi import APIRouter, Depends, Response
 from psycopg import AsyncConnection
 from pydantic import BaseModel, Field
@@ -34,6 +35,8 @@ from .jsonlog import log
 from .problems import Problem
 
 FINAL = {"done", "rejected", "failed"}
+# стани бронювання, що займають слоти (спільна таблиця booking частин Web і DPC)
+OCCUPYING = "('held', 'confirmed', 'visited', 'no_show')"
 ID_PATTERN = r"^[A-Za-z0-9._:-]{1,128}$"
 
 router = APIRouter(prefix="/v1", dependencies=[Depends(require_token)])
@@ -43,7 +46,7 @@ class BookingCreate(BaseModel):
     request_id: str = Field(pattern=ID_PATTERN)
     doctor_day_id: str = Field(pattern=ID_PATTERN)
     patient_id: str = Field(pattern=ID_PATTERN)
-    slots: int = Field(default=1, ge=1, le=8)
+    slots: int = Field(default=1, ge=1, le=2)  # картка: 1–2 слоти
 
 
 @dataclass
@@ -285,9 +288,13 @@ async def get_doctor_day(doctor_day_id: str) -> dict[str, object]:
     async with db.connection() as conn:
         row = await (
             await conn.execute(
-                """SELECT d.id, d.doctor_id, doc.specialty, d.day, d.slots_total, d.slots_taken,
-                          (SELECT coalesce(sum(b.slots), 0)::int FROM booking b WHERE b.doctor_day_id = d.id) AS booked,
-                          (SELECT count(*)::int FROM booking b WHERE b.doctor_day_id = d.id) AS bookings
+                f"""SELECT d.id, d.doctor_id, doc.specialty, d.day, d.slots_total, d.slots_taken, d.closed,
+                          (SELECT coalesce(sum(b.slots), 0)::int FROM booking b
+                            WHERE b.doctor_day_id = d.id AND b.status IN {OCCUPYING}) AS booked,
+                          (SELECT count(*)::int FROM booking b
+                            WHERE b.doctor_day_id = d.id AND b.status IN {OCCUPYING}) AS bookings,
+                          (SELECT count(*)::int FROM booking b
+                            WHERE b.doctor_day_id = d.id AND b.status IN {OCCUPYING} AND b.channel = 'web') AS web_bookings
                    FROM doctor_day d JOIN doctor doc ON doc.id = d.doctor_id
                    WHERE d.id = %s""",
                 (doctor_day_id,),
@@ -304,8 +311,10 @@ async def get_doctor_day(doctor_day_id: str) -> dict[str, object]:
         "slots_total": row["slots_total"],
         "slots_taken": row["slots_taken"],
         "slots_free": row["slots_total"] - row["slots_taken"],
+        "closed": row["closed"],
         "booked": row["booked"],
         "bookings": row["bookings"],
+        "web_bookings": row["web_bookings"],  # записи сайту (частина Web) на той самий ресурс
         "invariant_ok": row["slots_taken"] == row["booked"] and row["booked"] <= row["slots_total"],
     }
 
@@ -366,31 +375,37 @@ async def check_policy(patient_id: str) -> bool:
     return not patient_id.startswith("invalid-")
 
 
+_INSERT_BOOKING = """INSERT INTO booking (id, channel, request_id, patient_id, doctor_day_id, slots, status)
+                     VALUES (%s, 'call-center', %s, %s, %s, %s, 'confirmed')"""
+
+
 async def _book_locked(job: Job) -> None:
-    """Критична секція: блокування рядка doctor_day від перевірки до фіксації транзакції."""
-    async with db.connection() as conn, conn.transaction():
-        day = await (
-            await conn.execute(
-                "SELECT slots_total, slots_taken FROM doctor_day WHERE id = %s FOR UPDATE",
-                (job.doctor_day_id,),
-            )
-        ).fetchone()
-        if day["slots_taken"] + job.slots > day["slots_total"]:
-            state = "rejected"
-            await _set_state(conn, job, state, "no-free-slots")
-        else:
-            state = "done"
+    """Критична секція: блокування рядка doctor_day від перевірки до фіксації транзакції.
+
+    Перевірку й зміну виконує спільна з Web функція бази take_slots() (одне предметне правило для
+    сайту й кол-центру); бронювання й стан запиту записуються в тій самій транзакції."""
+    try:
+        async with db.connection() as conn, conn.transaction():
+            # блокування береться тут, щоб пауза CS_GAP_MS (дослід О1.4) була всередині критичної секції
+            await conn.execute("SELECT 1 FROM doctor_day WHERE id = %s FOR UPDATE", (job.doctor_day_id,))
             if config.CS_GAP_MS:
                 await asyncio.sleep(config.CS_GAP_MS / 1000)
-            await conn.execute(
-                "UPDATE doctor_day SET slots_taken = slots_taken + %s WHERE id = %s",
-                (job.slots, job.doctor_day_id),
-            )
-            await conn.execute(
-                "INSERT INTO booking (request_id, doctor_day_id, patient_id, slots) VALUES (%s, %s, %s, %s)",
-                (job.request_id, job.doctor_day_id, job.patient_id, job.slots),
-            )
-            await _set_state(conn, job, state, None)
+            reason = (
+                await (
+                    await conn.execute("SELECT take_slots(%s, %s) AS reason", (job.doctor_day_id, job.slots))
+                ).fetchone()
+            )["reason"]
+            if reason is None:
+                await conn.execute(
+                    _INSERT_BOOKING, (job.request_id, job.request_id, job.patient_id, job.doctor_day_id, job.slots)
+                )
+            state = "done" if reason is None else "rejected"
+            await _set_state(conn, job, state, reason)
+    except psycopg.errors.UniqueViolation:
+        # інваріант 2: у пацієнта вже є активний запис до цього лікаря на цей день; транзакцію
+        # (разом із зайнятими слотами) відкочено
+        await _finish(job, "rejected", "patient-already-booked")
+        return
     _mark_finished(job, state)  # після фіксації транзакції
 
 
@@ -400,25 +415,36 @@ async def _book_unprotected(job: Job) -> None:
     й займають більше слотів, ніж є."""
     async with db.connection() as conn:
         day = await (
-            await conn.execute("SELECT slots_total, slots_taken FROM doctor_day WHERE id = %s", (job.doctor_day_id,))
+            await conn.execute(
+                "SELECT slots_total, slots_taken, closed FROM doctor_day WHERE id = %s", (job.doctor_day_id,)
+            )
         ).fetchone()
         await conn.commit()
-        if day["slots_taken"] + job.slots > day["slots_total"]:
-            await _set_state(conn, job, "rejected", "no-free-slots")
+        reason = "day-closed" if day["closed"] else None
+        if reason is None and day["slots_taken"] + job.slots > day["slots_total"]:
+            reason = "no-free-slots"
+        if reason is not None:
+            await _set_state(conn, job, "rejected", reason)
             await conn.commit()
             _mark_finished(job, "rejected")
             return
         if config.CS_GAP_MS:
             await asyncio.sleep(config.CS_GAP_MS / 1000)
-        await conn.execute(
-            "UPDATE doctor_day SET slots_taken = %s WHERE id = %s",
-            (day["slots_taken"] + job.slots, job.doctor_day_id),
-        )
-        await conn.execute(
-            "INSERT INTO booking (request_id, doctor_day_id, patient_id, slots) VALUES (%s, %s, %s, %s)",
-            (job.request_id, job.doctor_day_id, job.patient_id, job.slots),
-        )
-        await _set_state(conn, job, "done", None)
+        try:
+            await conn.execute(
+                "UPDATE doctor_day SET slots_taken = %s WHERE id = %s",
+                (day["slots_taken"] + job.slots, job.doctor_day_id),
+            )
+            await conn.execute(
+                _INSERT_BOOKING, (job.request_id, job.request_id, job.patient_id, job.doctor_day_id, job.slots)
+            )
+            await _set_state(conn, job, "done", None)
+        except psycopg.errors.UniqueViolation:
+            await conn.rollback()
+            await _set_state(conn, job, "rejected", "patient-already-booked")
+            await conn.commit()
+            _mark_finished(job, "rejected")
+            return
     _mark_finished(job, "done")
 
 

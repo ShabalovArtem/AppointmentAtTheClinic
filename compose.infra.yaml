@@ -1,0 +1,66 @@
+# DPC infrastructure that the joint project shares with Web (postgres, migrate) or takes from
+# Web (kafka-ui, prometheus, grafana). Standalone DPC: compose.yaml includes this file.
+services:
+  postgres:
+    image: postgres:17.11
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "pg_isready -U app"
+      interval: 2s
+      retries: 30
+  migrate:
+    image: postgres:17.11
+    command:
+      - "sh"
+      - "/migrate/migrate.sh"
+    environment:
+      DATABASE_URL: "postgresql://app:app@postgres:5432/app"
+      MIGRATIONS_DIR: /migrations
+    volumes:
+      - "./configs/migrate:/migrate:ro"
+      - "${MIGRATIONS_PATH:-../migrations}:/migrations:ro"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  kafka-ui:
+    image: kafbat/kafka-ui:v1.5.0
+    environment:
+      KAFKA_CLUSTERS_0_NAME: dpc
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    ports:
+      - "${KAFKA_UI_PORT:-8185}:8080"
+    depends_on:
+      kafka:
+        condition: service_healthy
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    volumes:
+      - ./configs/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${PROMETHEUS_PORT:-9091}:9090"
+  grafana:
+    image: grafana/grafana:13.2.4
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./configs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./configs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+
+
+volumes:
+  pgdata:

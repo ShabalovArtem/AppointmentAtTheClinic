@@ -45,7 +45,7 @@ def main() -> int:
     def client(n: int) -> None:
         while not stop.is_set():
             rid = f"q-{uuid.uuid4().hex[:16]}"
-            body = {"request_id": rid, "doctor_day_id": args.doctor_day, "patient_id": f"p-{n}", "slots": 1}
+            body = {"request_id": rid, "doctor_day_id": args.doctor_day, "patient_id": f"cc-{rid}", "slots": 1}
             status, headers, _, sec = api.call("POST", "/v1/booking-requests", body)
             with lock:
                 submits.append({
