@@ -1,0 +1,277 @@
+[
+  {
+    "check": "О1.6 /health app-a",
+    "ok": true,
+    "evidence": {
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "instance": "app-a"
+      }
+    }
+  },
+  {
+    "check": "О1.6 /health app-b",
+    "ok": true,
+    "evidence": {
+      "status": 200,
+      "body": {
+        "status": "ok",
+        "instance": "app-b"
+      }
+    }
+  },
+  {
+    "check": "О1.6 X-Request-ID повертається",
+    "ok": true,
+    "evidence": {
+      "x-request-id": "check-req-1"
+    }
+  },
+  {
+    "check": "О1.6 nginx розподіляє на app-a і app-b",
+    "ok": true,
+    "evidence": {
+      "app-a": 10,
+      "app-b": 10
+    }
+  },
+  {
+    "check": "каталог лікарів",
+    "ok": true,
+    "evidence": {
+      "status": 200,
+      "count": 4
+    }
+  },
+  {
+    "check": "дні лікаря з вільними слотами й ціною в копійках",
+    "ok": true,
+    "evidence": {
+      "status": 200,
+      "first": {
+        "id": "dd-main",
+        "day": "2026-12-01",
+        "clinic_tz": "Europe/Kyiv",
+        "slots_total": 100000,
+        "slots_free": 99712,
+        "slot_minutes": 15,
+        "price": {
+          "amount_minor": 50000,
+          "currency": "UAH"
+        }
+      }
+    }
+  },
+  {
+    "check": "невідомий лікар — 404 Problem Details",
+    "ok": true,
+    "evidence": {
+      "status": 404,
+      "body": {
+        "type": "https://example.edu/problems/doctor-not-found",
+        "title": "Doctor not found",
+        "status": 404,
+        "detail": "doctor_id=no-such",
+        "instance": "/v1/doctors/no-such/days"
+      }
+    }
+  },
+  {
+    "check": "О1.4 normal — 201 + Location, id рядок, held",
+    "ok": true,
+    "evidence": {
+      "status": 201,
+      "location": "/v1/bookings/bk-b9d4ca351d944b33afd7",
+      "body": {
+        "id": "bk-b9d4ca351d944b33afd7",
+        "status": "held",
+        "channel": "web",
+        "patient_id": "p-1002",
+        "doctor_day_id": "dd-main",
+        "doctor": {
+          "id": "doc-1",
+          "full_name": "Іваненко Олег Петрович",
+          "specialty": "терапевт"
+        },
+        "day": "2026-12-01",
+        "clinic_tz": "Europe/Kyiv",
+        "slots": 2,
+        "visit_reason": "огляд",
+        "price": {
+          "amount_minor": 100000,
+          "currency": "UAH"
+        },
+        "version": "1",
+        "created_at": "2026-11-18T18:32:34.840990+00:00",
+        "expires_at": "2026-11-18T18:47:34.840990+00:00",
+        "cancelled_at": null,
+        "cancel_reason": null
+      }
+    }
+  },
+  {
+    "check": "О1.4 вартість = ціна слоту × слоти (цілі копійки)",
+    "ok": true,
+    "evidence": {
+      "amount_minor": 100000,
+      "currency": "UAH"
+    }
+  },
+  {
+    "check": "запис видно власнику після 201 (зафіксовано до відповіді)",
+    "ok": true,
+    "evidence": {
+      "status": 200
+    }
+  },
+  {
+    "check": "чужий запис — 404",
+    "ok": true,
+    "evidence": {
+      "status": 404
+    }
+  },
+  {
+    "check": "інваріант 2: другий активний запис до того ж лікаря на день — 409",
+    "ok": true,
+    "evidence": {
+      "status": 409,
+      "body": {
+        "type": "https://example.edu/problems/already-booked",
+        "title": "Patient already has an active booking with this doctor on this day",
+        "status": 409,
+        "detail": "doctor_day_id=dd-main",
+        "instance": "/v1/bookings"
+      }
+    }
+  },
+  {
+    "check": "missing — 404",
+    "ok": true,
+    "evidence": {
+      "status": 404,
+      "body": {
+        "type": "https://example.edu/problems/doctor-day-not-found",
+        "title": "Doctor day not found",
+        "status": 404,
+        "detail": "doctor_day_id=no-such-day, slots=1",
+        "instance": "/v1/bookings"
+      }
+    }
+  },
+  {
+    "check": "неправильні дані (slots=5) — 422",
+    "ok": true,
+    "evidence": {
+      "status": 422,
+      "body": {
+        "type": "https://example.edu/problems/invalid-request",
+        "title": "Invalid request data",
+        "status": 422,
+        "instance": "/v1/bookings",
+        "errors": [
+          {
+            "field": "body.slots",
+            "message": "Input should be less than or equal to 2"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "check": "зайве поле (status) — 422",
+    "ok": true,
+    "evidence": {
+      "status": 422,
+      "body": {
+        "type": "https://example.edu/problems/invalid-request",
+        "title": "Invalid request data",
+        "status": 422,
+        "instance": "/v1/bookings",
+        "errors": [
+          {
+            "field": "body.status",
+            "message": "Extra inputs are not permitted"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "check": "пошкоджений JSON — 400",
+    "ok": true,
+    "evidence": {
+      "status": 400,
+      "body": {
+        "type": "https://example.edu/problems/malformed-json",
+        "title": "Request body is not valid JSON",
+        "status": 400,
+        "instance": "/v1/bookings",
+        "errors": [
+          {
+            "field": "body.18",
+            "message": "JSON decode error"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "check": "без X-User-Id — 401",
+    "ok": true,
+    "evidence": {
+      "status": 401,
+      "body": {
+        "type": "https://example.edu/problems/unauthorized",
+        "title": "Login required",
+        "status": 401,
+        "instance": "/v1/bookings"
+      }
+    }
+  },
+  {
+    "check": "останній слот: не більше 1 успіху, решта 409",
+    "ok": true,
+    "evidence": {
+      "201": 1,
+      "409": 4
+    }
+  },
+  {
+    "check": "О1.5 усі сторінки: без дублів, від найновіших",
+    "ok": true,
+    "evidence": {
+      "pages": 3,
+      "items": 5
+    }
+  },
+  {
+    "check": "О1.5 лише власні записи",
+    "ok": true,
+    "evidence": {
+      "count": 0
+    }
+  },
+  {
+    "check": "О1.5 limit=0 — 422",
+    "ok": true,
+    "evidence": {
+      "status": 422
+    }
+  },
+  {
+    "check": "О1.5 limit=51 — 422",
+    "ok": true,
+    "evidence": {
+      "status": 422
+    }
+  },
+  {
+    "check": "О1.5 cursor=not-a-cursor — 400",
+    "ok": true,
+    "evidence": {
+      "status": 400
+    }
+  }
+]

@@ -1,34 +1,10 @@
-# Local configuration and access tokens
+# secrets and local settings of both parts (examples stay: .env.example)
 .env
-.env.*
-!.env.example
-!.env.template
-tokens.txt
-tokens-*.txt
-tokens_*.txt
-
-# Generated data
-data/
-rows.csv
-state.jsonl
-runs/
-
-# Local environments and dependencies
-.venv/
-venv/
-node_modules/
-
-# Python and tool caches
+**/.env
+# Python / Node caches
 __pycache__/
-*.py[cod]
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# Runtime logs and operating-system metadata
-logs/
+*.pyc
+.venv/
+node_modules/
+# local experiment output written outside results folders
 *.log
-.DS_Store
-Thumbs.db

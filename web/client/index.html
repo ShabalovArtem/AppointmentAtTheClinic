@@ -1,0 +1,231 @@
+<!doctype html>
+<!-- Клієнт сайту клініки (частина Web, C02). Запуск поза Compose з кореня проєкту:
+     python -m http.server 8081 --bind 127.0.0.1 --directory web/client  ->  http://localhost:8081 -->
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Запис до клініки — сайт</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+        @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } }
+        .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+        .subtabs { display: flex; gap: 8px; flex-wrap: wrap; }
+        .subtabs button { padding: 7px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); font: inherit; cursor: pointer; }
+        .subtabs button[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+        .pane { display: none; }
+        .pane.active { display: block; }
+        .doctors { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+        .doctor { text-align: left; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; font: inherit; cursor: pointer; }
+        .doctor:hover { border-color: var(--accent); }
+        .doctor[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+        .doctor b { display: block; }
+        .doctor small { color: var(--muted); }
+        .problem-box { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--bad-soft); color: var(--bad); font-size: 14px; }
+        .problem-box code { font-size: 12px; }
+        .ok-box { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--ok-soft); color: var(--ok); font-size: 14px; }
+        .free { min-width: 110px; }
+        .diagram svg { width: 100%; height: auto; }
+        .diagram .node rect { fill: #fff; stroke: #cfc8b8; stroke-width: 1.2; rx: 8; transition: fill .2s, stroke .2s; }
+        .diagram .node text { font: 600 12px "Segoe UI", sans-serif; fill: var(--text); text-anchor: middle; }
+        .diagram .node text.sub { font: 10px "Segoe UI", sans-serif; fill: var(--muted); }
+        .diagram .node.hit rect { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 2; }
+        .diagram .node.later rect { stroke-dasharray: 4 3; }
+        .diagram .node.later text { fill: #9aa19c; }
+        .diagram line, .diagram path { stroke: #d9d2c3; stroke-width: 1.4; fill: none; }
+        .diagram .flow { stroke: var(--accent); stroke-width: 2.2; }
+        .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 6px; }
+        .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+        .reqlog { max-height: 300px; overflow: auto; font: 12px/1.6 var(--mono); }
+        .reqlog div { display: grid; grid-template-columns: 62px 44px 1fr 38px 52px; gap: 6px; border-bottom: 1px solid #f0ece3; }
+        .reqlog span:nth-child(3) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .reqlog .s2 { color: var(--ok); } .reqlog .s4 { color: var(--warn); } .reqlog .s5, .reqlog .s0 { color: var(--bad); }
+        .muted { color: var(--muted); }
+        [hidden] { display: none !important; }
+        td .btn { padding: 4px 9px; font-size: 13px; margin: 2px 0; }
+    </style>
+</head>
+<body>
+<header>
+    <div class="brand">
+        <h1>🏥 Клініка: запис до лікаря</h1>
+        <span>C02 · сайт пацієнта · проєкт курсу Web</span>
+    </div>
+    <div class="links">
+        <span class="pill">екземпляр: <b id="instance-pill">—</b></span>
+        <span id="api-pill" class="pill"><span class="dot"></span><span>API: …</span></span>
+        <a class="pill" href="http://localhost:8083" target="_blank" rel="noopener">Кол-центр (DPC)</a>
+        <a class="pill" href="http://localhost:8085" target="_blank" rel="noopener">Kafka UI</a>
+        <a class="pill" href="http://localhost:3000" target="_blank" rel="noopener">Grafana</a>
+    </div>
+</header>
+
+<main>
+    <div class="layout">
+        <div class="stack">
+            <div class="card" id="auth-card">
+                <!-- гість: вхід -->
+                <div id="login-view">
+                    <h2>Вхід</h2>
+                    <form id="login-form" class="row" autocomplete="on">
+                        <input name="login" placeholder="логін" autocomplete="username" required style="flex:1;min-width:140px">
+                        <input name="password" type="password" placeholder="пароль" autocomplete="current-password" required style="flex:1;min-width:140px">
+                        <button class="btn primary">Увійти</button>
+                        <button class="btn" type="button" id="show-register">Зареєструватися</button>
+                    </form>
+                    <p class="hint">Демо: пацієнти patient1…patient5 / patient-pass, реєстратор registrar / registrar-pass.</p>
+                </div>
+                <!-- гість: реєстрація пацієнта -->
+                <div id="register-view" hidden>
+                    <h2>Реєстрація пацієнта</h2>
+                    <form id="register-form" autocomplete="on">
+                        <div class="row">
+                            <label class="field" style="flex:1;min-width:180px"><span>Ім'я та прізвище</span>
+                                <input name="name" required minlength="2" maxlength="100" autocomplete="name"></label>
+                            <label class="field" style="flex:1;min-width:160px"><span>Логін (латиниця, цифри, . _ -)</span>
+                                <input name="login" required pattern="[A-Za-z0-9._\-]{3,40}" autocomplete="username"></label>
+                        </div>
+                        <div class="row">
+                            <label class="field" style="flex:1;min-width:160px"><span>Пароль (від 8 символів)</span>
+                                <input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+                            <label class="field" style="flex:1;min-width:160px"><span>Повторіть пароль</span>
+                                <input name="password2" type="password" required minlength="8" autocomplete="new-password"></label>
+                        </div>
+                        <button class="btn primary">Створити обліковий запис</button>
+                        <button class="btn" type="button" id="show-login">Уже маю обліковий запис</button>
+                    </form>
+                </div>
+                <!-- увійшов -->
+                <div id="me-view" hidden>
+                    <div class="row" style="justify-content:space-between;margin:0">
+                        <div><h2 style="margin:0" id="me-name"></h2><span class="hint" id="me-info"></span></div>
+                        <button class="btn" id="logout">Вийти</button>
+                    </div>
+                </div>
+                <div id="auth-result"></div>
+            </div>
+
+            <div class="subtabs" role="tablist">
+                <button data-pane="catalog" aria-selected="true">Лікарі</button>
+                <button data-pane="mine" data-role="patient">Мої записи</button>
+                <button data-pane="registry" data-role="staff">Реєстратура</button>
+                <button data-pane="labs">Лабораторні</button>
+            </div>
+
+            <section class="pane active" id="catalog">
+                <div class="card">
+                    <h2>Лікарі</h2>
+                    <div class="doctors" id="doctors"><span class="muted">Завантаження…</span></div>
+                </div>
+                <div class="card" style="margin-top:16px">
+                    <h2 id="days-title">Дні прийому</h2>
+                    <div class="table-wrap">
+                        <table>
+                            <thead><tr><th>дата</th><th class="free">вільно</th><th class="num">ціна слоту</th><th>запис</th></tr></thead>
+                            <tbody id="days"><tr class="empty"><td colspan="4">Оберіть лікаря</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div class="row" style="margin-top:12px">
+                        <label>причина візиту</label>
+                        <input id="reason" maxlength="500" placeholder="необов'язково" style="flex:1">
+                    </div>
+                    <div id="book-result"></div>
+                </div>
+            </section>
+
+            <section class="pane" id="mine">
+                <div class="card">
+                    <h2>Мої записи</h2>
+                    <div class="row">
+                        <label>на сторінці</label>
+                        <select id="page-size"><option>2</option><option selected>5</option><option>20</option><option>50</option></select>
+                        <button class="btn" id="reload">Оновити (усі сторінки)</button>
+                        <span class="hint" id="pages-info"></span>
+                    </div>
+                    <div class="table-wrap" style="max-height:520px">
+                        <table>
+                            <thead><tr><th>запис</th><th>лікар · дата</th><th class="num">слоти</th><th class="num">вартість</th><th>стан</th><th>утримання до</th><th>дії</th></tr></thead>
+                            <tbody id="bookings"><tr class="empty"><td colspan="7">—</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div id="mine-result"></div>
+                </div>
+            </section>
+
+            <section class="pane" id="registry">
+                <div class="card">
+                    <h2>Розклад лікарів (реєстратура)</h2>
+                    <p class="hint">Закриття дня: нові записи сайту й кол-центру отримують відмову, активні записи скасовуються.</p>
+                    <div class="table-wrap" style="max-height:520px">
+                        <table>
+                            <thead><tr><th>лікар</th><th>дата</th><th class="free">вільно</th><th>стан</th><th></th></tr></thead>
+                            <tbody id="registry-days"><tr class="empty"><td colspan="5">—</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div id="registry-result"></div>
+                </div>
+            </section>
+
+            <section class="pane" id="labs">
+                <div class="card">
+                    <h2>Лабораторні роботи Web</h2>
+                    <table>
+                        <thead><tr><th>ЛР</th><th>що на сайті</th><th>стан</th></tr></thead>
+                        <tbody>
+                        <tr><td>ЛР1</td><td>каталог, запис (утримання слотів), мої записи з курсором, Problem Details</td><td><span class="badge ok">готово</span></td></tr>
+                        <tr><td>ЛР2</td><td>зміна причини з If-Match і скасування — <b>готово</b>; Idempotency-Key, дослід «20 пацієнтів на останній слот» — далі</td><td><span class="badge processing">частково</span></td></tr>
+                        <tr><td>ЛР3</td><td>реєстрація й вхід пацієнта, вхід реєстратора, закриття дня лікаря — <b>готово</b>; CORS/Origin, обмеження спроб входу — далі</td><td><span class="badge processing">частково</span></td></tr>
+                        <tr><td>ЛР4</td><td>перевірка поліса у страховій (довга операція, outbox, Kafka)</td><td><span class="badge">далі</span></td></tr>
+                        <tr><td>ЛР5</td><td>сповіщення наживо через WebSocket</td><td><span class="badge">далі</span></td></tr>
+                        <tr><td>ЛР6</td><td>типи прийому (огляд — 2 слоти), поступове оновлення</td><td><span class="badge">далі</span></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <div class="stack">
+            <div class="card diagram">
+                <h2>Як це працює</h2>
+                <svg viewBox="0 0 560 300" role="img" aria-label="Схема компонентів">
+                    <line x1="70" y1="150" x2="150" y2="150"/>
+                    <line x1="210" y1="150" x2="270" y2="90"/>
+                    <line x1="210" y1="150" x2="270" y2="210"/>
+                    <line x1="330" y1="90" x2="400" y2="150"/>
+                    <line x1="330" y1="210" x2="400" y2="150"/>
+                    <line x1="460" y1="150" x2="460" y2="240"/>
+                    <path d="M460 40 L460 125"/>
+                    <line x1="330" y1="270" x2="410" y2="270" style="stroke-dasharray:4 3"/>
+                    <line id="f1" class="" x1="70" y1="150" x2="150" y2="150"/>
+                    <line id="fa" x1="210" y1="150" x2="270" y2="90"/>
+                    <line id="fb" x1="210" y1="150" x2="270" y2="210"/>
+                    <line id="fa2" x1="330" y1="90" x2="400" y2="150"/>
+                    <line id="fb2" x1="330" y1="210" x2="400" y2="150"/>
+                    <g class="node" id="n-browser"><rect x="10" y="130" width="64" height="40"/><text x="42" y="148">браузер</text><text class="sub" x="42" y="162">сайт</text></g>
+                    <g class="node" id="n-nginx"><rect x="150" y="130" width="64" height="40"/><text x="182" y="148">nginx</text><text class="sub" x="182" y="162">least_conn</text></g>
+                    <g class="node" id="n-app-a"><rect x="266" y="70" width="68" height="40"/><text x="300" y="88">app-a</text><text class="sub" x="300" y="102">FastAPI</text></g>
+                    <g class="node" id="n-app-b"><rect x="266" y="190" width="68" height="40"/><text x="300" y="208">app-b</text><text class="sub" x="300" y="222">FastAPI</text></g>
+                    <g class="node" id="n-db"><rect x="400" y="125" width="120" height="50"/><text x="460" y="145">PostgreSQL</text><text class="sub" x="460" y="160">take_slots() — спільне правило</text></g>
+                    <g class="node" id="n-dpc"><rect x="410" y="240" width="110" height="44"/><text x="465" y="258">DPC api</text><text class="sub" x="465" y="272">черга кол-центру</text></g>
+                    <g class="node later"><rect x="400" y="10" width="120" height="32"/><text x="460" y="30">Kafka · шлюзи (ЛР4–5)</text></g>
+                    <g class="node later"><rect x="240" y="252" width="90" height="36"/><text x="285" y="268">страхова</text><text class="sub" x="285" y="281">симулятор (ЛР4)</text></g>
+                </svg>
+                <div class="legend">
+                    <span><i style="background:var(--accent)"></i>шлях останнього запиту</span>
+                    <span><i style="background:#cfc8b8"></i>з'єднання</span>
+                    <span><i style="background:#fff;border:1px dashed #9aa19c"></i>наступні ЛР</span>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Журнал запитів</h2>
+                <div class="reqlog" id="reqlog"><span class="muted">API: <span id="api-addr"></span></span></div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

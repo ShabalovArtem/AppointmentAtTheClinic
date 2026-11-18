@@ -1,5 +1,15 @@
-# Standalone DPC: infrastructure + services. The joint project with Web uses ../compose.yaml.
-#   cp .env.example .env && docker compose up -d --build api
+# Спільний проєкт C02 «Запис до клініки»: курс Web (web/) + курс DPC (DPC/).
+# Одна база PostgreSQL і одна система міграцій (migrations/) — сервіси `postgres` і `migrate` з web/compose.yaml.
+# DPC підключає лише свої сервіси (DPC/compose.services.yaml); Kafka в частин поки різні (Web — broker, DPC — kafka).
+#
+# ЛР1 обох курсів (з цього каталогу):
+#   docker compose up -d --build nginx api
+# Уся платформа (потрібно ~14-16 ГБ пам'яті для Docker):
+#   docker compose up -d --build
+name: clinic
+
 include:
-  - compose.infra.yaml
-  - compose.services.yaml
+  - path: web/compose.yaml
+    env_file: web/.env
+  - path: DPC/compose.services.yaml
+    env_file: DPC/.env

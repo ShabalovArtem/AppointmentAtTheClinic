@@ -1,0 +1,1098 @@
+# Контракт (OpenAPI 3.1) частини Web спільного проєкту C02 «Запис до клініки».
+#   - Службові маршрути (/health ... /v1/ws) — як у комплекті курсу.
+#   - x-course: main, list, object, update, cancel, staff-action, long-operation — для засобу перевірки.
+#   - Приклади main: normal (dd-main), scarce (dd-one, x-capacity: 1), missing; значення є в
+#     ../migrations/900_clinic_seed.sql. Позначки «ЛР2/ЛР3/ЛР4» — маршрути наступних робіт.
+#   - Користувач — токен входу (bearerAuth) або, поки USER_HEADER=on, заголовок X-User-Id (userHeader).
+openapi: 3.1.0
+info:
+  title: Клініка — запис до лікаря (частина Web)
+  version: 1.0.0
+  license:
+    name: MIT
+    identifier: MIT
+  description: |
+    Контракт API. Помилки — Problem Details (RFC 9457, `application/problem+json`).
+    Ідентифікатори — рядки. Гроші — ціле число мінімальних одиниць і валюта. Час — RFC 3339 із зоною.
+    Календарні дати прийому — `date` у зоні клініки (`clinic_tz`).
+    Користувач — токен `Authorization: Bearer` з `/v1/auth/login` або `/v1/auth/register`;
+    поки `USER_HEADER=on` (ЛР1–ЛР2), без токена приймається заголовок `X-User-Id`.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+  - userHeader: []
+
+tags:
+  - name: service
+    description: Службові маршрути (однакові для всіх тем)
+  - name: auth
+    description: Реєстрація пацієнта, вхід, вихід, поточна особа
+  - name: catalog
+    description: Лікарі й дні прийому
+  - name: bookings
+    description: Записи пацієнтів (утримання слотів дня лікаря)
+  - name: operations
+    description: Довгі операції (ЛР4)
+  - name: notifications
+    description: Сповіщення (ЛР5)
+
+paths:
+  /health:
+    get:
+      tags:
+        - service
+      operationId: getHealth
+      summary: Перевірка живучості процесу, без звернення до бази
+      security: []
+      responses:
+        "200":
+          description: Процес відповідає
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  instance:
+                    type: string
+  /ready:
+    get:
+      tags:
+        - service
+      operationId: getReady
+      summary: Готовність приймати запити (база доступна, процес не завершується)
+      security: []
+      responses:
+        "200":
+          description: Готовий
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /v1/auth/register:
+    post:
+      tags:
+        - auth
+      operationId: register
+      summary: Реєстрація пацієнта (роль patient) і одразу вхід
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - login
+                - password
+                - name
+              properties:
+                login:
+                  type: string
+                  pattern: "^[A-Za-z0-9._-]{3,40}$"
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+            examples:
+              normal:
+                value:
+                  login: patient6
+                  password: secret-pass-1
+                  name: Тарас Гончаренко
+      responses:
+        "201":
+          description: Обліковий запис створено, вхід виконано
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+  /v1/auth/login:
+    post:
+      tags:
+        - auth
+      operationId: login
+      summary: Вхід
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - login
+                - password
+              properties:
+                login:
+                  type: string
+                password:
+                  type: string
+                  format: password
+            examples:
+              patient:
+                value:
+                  login: patient1
+                  password: patient-pass
+              staff:
+                value:
+                  login: registrar
+                  password: registrar-pass
+      responses:
+        "200":
+          description: Вхід виконано, токен у тілі (Authorization Bearer)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Session"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/auth/logout:
+    post:
+      tags:
+        - auth
+      operationId: logout
+      summary: Вихід
+      responses:
+        "204":
+          description: Вихід виконано
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/me:
+    get:
+      tags:
+        - auth
+      operationId: getMe
+      summary: Поточна особа й роль
+      responses:
+        "200":
+          description: Поточний користувач
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - id
+                  - role
+                properties:
+                  id:
+                    type: string
+                  login:
+                    type: string
+                  name:
+                    type: string
+                  role:
+                    type: string
+                    enum:
+                      - patient
+                      - staff
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v1/doctors:
+    get:
+      tags:
+        - catalog
+      operationId: listDoctors
+      summary: Лікарі поліклініки
+      security: []
+      responses:
+        "200":
+          description: Лікарі
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Doctor"
+              examples:
+                normal:
+                  value:
+                    items:
+                      - id: doc-1
+                        full_name: Іваненко Олег Петрович
+                        specialty: терапевт
+  /v1/doctors/{id}/days:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags:
+        - catalog
+      operationId: listDoctorDays
+      summary: Відкриті дні прийому лікаря з вільними слотами й ціною слоту
+      security: []
+      responses:
+        "200":
+          description: Дні прийому
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - doctor
+                  - items
+                properties:
+                  doctor:
+                    $ref: "#/components/schemas/Doctor"
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DoctorDay"
+              examples:
+                normal:
+                  value:
+                    doctor:
+                      id: doc-1
+                      full_name: Іваненко Олег Петрович
+                      specialty: терапевт
+                    items:
+                      - id: dd-main
+                        day: "2026-12-01"
+                        clinic_tz: Europe/Kyiv
+                        slots_total: 100000
+                        slots_free: 99998
+                        slot_minutes: 15
+                        price:
+                          amount_minor: 50000
+                          currency: UAH
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/bookings:
+    get:
+      tags:
+        - bookings
+      operationId: listBookings
+      summary: Мої записи, від найновіших (порядок за парою created_at, id)
+      x-course: list
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Сторінка списку
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Page"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Booking"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+    post:
+      tags:
+        - bookings
+      operationId: createBooking
+      summary: Утримати 1–2 слоти дня лікаря (запис у стані held до expires_at)
+      description: |
+        В одній транзакції: спільне з кол-центром DPC правило `take_slots()` (день існує, не закритий,
+        вистачає слотів; рядок дня заблоковано) і запис бронювання. 201 надсилається після фіксації.
+        У пацієнта не більше одного активного запису до лікаря на день — інакше 409.
+      x-course: main
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingCreate"
+            examples:
+              normal:
+                summary: День, слотів якого достатньо
+                value:
+                  doctor_day_id: dd-main
+                  slots: 1
+                  visit_reason: Профілактичний огляд
+              scarce:
+                summary: День з одним слотом — для досліду гонки
+                value:
+                  doctor_day_id: dd-one
+                  slots: 1
+                x-capacity: 1
+              missing:
+                summary: Такого дня лікаря немає — 404
+                value:
+                  doctor_day_id: no-such-day
+                  slots: 1
+      responses:
+        "201":
+          description: Створено (після фіксації транзакції)
+          headers:
+            Location:
+              schema:
+                type: string
+              description: "/v1/bookings/{id}"
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+              examples:
+                normal:
+                  value:
+                    id: bk-3f1c0a9e5b7d4e2a8c61
+                    status: held
+                    channel: web
+                    patient_id: p-1001
+                    doctor_day_id: dd-main
+                    doctor:
+                      id: doc-1
+                      full_name: Іваненко Олег Петрович
+                      specialty: терапевт
+                    day: "2026-12-01"
+                    clinic_tz: Europe/Kyiv
+                    slots: 1
+                    visit_reason: Профілактичний огляд
+                    price:
+                      amount_minor: 50000
+                      currency: UAH
+                    version: "1"
+                    created_at: "2026-11-18T17:52:35.902567+00:00"
+                    expires_at: "2026-11-18T18:07:35.902567+00:00"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+  /v1/bookings/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    get:
+      tags:
+        - bookings
+      operationId: getBooking
+      summary: Один запис (чужий — 404)
+      x-course: object
+      responses:
+        "200":
+          description: Об'єкт
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags:
+        - bookings
+      operationId: updateBooking
+      summary: Змінити причину візиту з If-Match (ETag — версія). Поля власника, стану й версії — 422; застаріла версія — 412; без If-Match — 428
+      x-course: update
+      parameters:
+        - $ref: "#/components/parameters/IfMatch"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingUpdate"
+            examples:
+              normal:
+                summary: Дозволена зміна
+                value:
+                  visit_reason: Біль у спині
+              forbidden:
+                summary: Спроба змінити стан — 422
+                value:
+                  status: confirmed
+      responses:
+        "200":
+          description: Змінено
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "412":
+          $ref: "#/components/responses/PreconditionFailed"
+        "422":
+          $ref: "#/components/responses/Unprocessable"
+        "428":
+          $ref: "#/components/responses/PreconditionRequired"
+  /v1/bookings/{id}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags:
+        - bookings
+      operationId: cancelBooking
+      summary: Скасувати власний запис (слоти повертаються; повторне скасування повертає той самий стан і слоти вдруге не віддає)
+      x-course: cancel
+      responses:
+        "200":
+          description: Поточний стан після скасування
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /v1/doctor-days:
+    get:
+      tags:
+        - catalog
+      operationId: listAllDoctorDays
+      summary: Розклад для реєстратури — усі дні лікарів, включно із закритими (лише staff)
+      responses:
+        "200":
+          description: Дні прийому
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DoctorDay"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /v1/doctor-days/{id}/close:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags:
+        - bookings
+      operationId: closeDoctorDay
+      summary: Реєстратор закриває день лікаря (нові записи обох каналів — 409, активні скасовуються; пацієнт — 403)
+      x-course: staff-action
+      responses:
+        "200":
+          description: День закрито; cancelled_bookings — скасовані записи
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/DoctorDay"
+                  - type: object
+                    properties:
+                      cancelled_bookings:
+                        type: array
+                        items:
+                          type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/bookings/{id}/coverage-checks:
+    parameters:
+      - $ref: "#/components/parameters/Id"
+    post:
+      tags:
+        - bookings
+      operationId: startCoverageCheck
+      summary: "ЛР4: перевірка поліса у страховій (зовнішня система, довга операція)"
+      x-course: long-operation
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+            examples:
+              normal:
+                value: {}
+      responses:
+        "202":
+          description: Операцію прийнято
+          headers:
+            Location:
+              schema:
+                type: string
+              description: "/v1/operations/{op}"
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /v1/operations/{op}:
+    get:
+      tags:
+        - operations
+      operationId: getOperation
+      summary: Стан довгої операції, доступний лише власнику
+      parameters:
+        - name: op
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Стан операції
+          headers:
+            Retry-After:
+              $ref: "#/components/headers/RetryAfter"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/me/notifications:
+    get:
+      tags:
+        - notifications
+      operationId: listNotifications
+      summary: Стрічка сповіщень після позиції
+      parameters:
+        - name: after
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - $ref: "#/components/parameters/Limit"
+      responses:
+        "200":
+          description: Сповіщення з позиціями, що зростають
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Notification"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "410":
+          $ref: "#/components/responses/Gone"
+  /v1/me/notifications/head:
+    get:
+      tags:
+        - notifications
+      operationId: getNotificationsHead
+      summary: Поточна найбільша позиція стрічки
+      responses:
+        "200":
+          description: Позиція
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - position
+                properties:
+                  position:
+                    type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/ws-tickets:
+    post:
+      tags:
+        - notifications
+      operationId: createWsTicket
+      summary: Одноразовий квиток для WebSocket
+      responses:
+        "201":
+          description: Квиток
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - ticket
+                  - expires_at
+                properties:
+                  ticket:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/ws:
+    get:
+      tags:
+        - notifications
+      operationId: openNotificationChannel
+      summary: Канал сповіщень WebSocket через шлюз
+      description: Квиток передається в `?ticket=`. `Origin` — лише походження клієнта. Формат кадрів описано тут або 
+        в AsyncAPI.
+      security: []
+      parameters:
+        - name: ticket
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "101":
+          description: З'єднання встановлено (WebSocket)
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    userHeader:
+      type: apiKey
+      in: header
+      name: X-User-Id
+      description: До ЛР3 — ідентифікатор заздалегідь створеного користувача (p-1001 ... p-1005, u-registrar)
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Непрозорий курсор з `next_cursor` попередньої сторінки
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 50
+        default: 20
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Ключ ідемпотентності (механізм — ЛР2). Повтор із тим самим ключем повертає збережений результат
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: "Без заголовка — 428"
+      schema:
+        type: string
+
+  headers:
+    RetryAfter:
+      description: Через скільки секунд повторити
+      schema:
+        type: integer
+        minimum: 0
+    RequestId:
+      description: Ідентифікатор запиту для журналу
+      schema:
+        type: string
+
+  schemas:
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+    Page:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items: {}
+        next_cursor:
+          type:
+            - string
+            - "null"
+          description: "null — це остання сторінка"
+    Doctor:
+      type: object
+      required:
+        - id
+        - full_name
+        - specialty
+      properties:
+        id:
+          type: string
+        full_name:
+          type: string
+        specialty:
+          type: string
+    DoctorDay:
+      type: object
+      required:
+        - id
+        - day
+        - clinic_tz
+        - slots_total
+        - slots_free
+        - price
+      properties:
+        id:
+          type: string
+        day:
+          type: string
+          format: date
+          description: Календарна дата прийому в зоні клініки
+        clinic_tz:
+          type: string
+          examples:
+            - Europe/Kyiv
+        slots_total:
+          type: integer
+        slots_free:
+          type: integer
+        slot_minutes:
+          type: integer
+          const: 15
+        price:
+          $ref: "#/components/schemas/Money"
+        closed:
+          type: boolean
+        doctor:
+          $ref: "#/components/schemas/Doctor"
+    Booking:
+      type: object
+      required:
+        - id
+        - status
+        - doctor_day_id
+        - slots
+        - price
+        - version
+        - created_at
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+            - held
+            - confirmed
+            - expired
+            - cancelled
+            - visited
+            - no_show
+        channel:
+          type: string
+          enum:
+            - web
+            - call-center
+          description: web — запис сайту, call-center — запис кол-центру з черги DPC
+        patient_id:
+          type: string
+        doctor_day_id:
+          type: string
+        doctor:
+          $ref: "#/components/schemas/Doctor"
+        day:
+          type: string
+          format: date
+        clinic_tz:
+          type: string
+        slots:
+          type: integer
+          minimum: 1
+          maximum: 2
+        visit_reason:
+          type:
+            - string
+            - "null"
+        price:
+          $ref: "#/components/schemas/Money"
+        version:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+          description: До цього моменту утримання held можна підтвердити
+        cancelled_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        cancel_reason:
+          type:
+            - string
+            - "null"
+          enum:
+            - patient
+            - day-closed
+            - null
+    BookingCreate:
+      type: object
+      additionalProperties: false
+      required:
+        - doctor_day_id
+        - slots
+      properties:
+        doctor_day_id:
+          type: string
+        slots:
+          type: integer
+          minimum: 1
+          maximum: 2
+        visit_reason:
+          type: string
+          maxLength: 500
+    BookingUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        visit_reason:
+          type: string
+          maxLength: 500
+    Session:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_at
+        - user
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+          const: Bearer
+        expires_at:
+          type: string
+          format: date-time
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            login:
+              type: string
+            name:
+              type: string
+            role:
+              type: string
+              enum:
+                - patient
+                - staff
+    Money:
+      type: object
+      required:
+        - amount_minor
+        - currency
+      properties:
+        amount_minor:
+          type: integer
+          description: Сума в мінімальних одиницях (копійках)
+        currency:
+          type: string
+          examples:
+            - UAH
+    Operation:
+      type: object
+      required:
+        - id
+        - status
+        - version
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - succeeded
+            - failed
+        version:
+          type: integer
+        result:
+          type:
+            - object
+            - "null"
+    Notification:
+      type: object
+      required:
+        - position
+        - kind
+        - payload
+        - created_at
+      properties:
+        position:
+          type: integer
+        kind:
+          type: string
+        payload:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+  responses:
+    BadRequest:
+      description: Некоректний запит
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Unauthorized:
+      description: Потрібен вхід
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Forbidden:
+      description: Недостатньо прав
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Не знайдено (або чужий об'єкт)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: Конфлікт із поточним станом (ресурсу немає, ключ ще обробляється)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Gone:
+      description: Позицію вже видалено з історії. Завантажте поточний стан
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PreconditionFailed:
+      description: Версія застаріла (If-Match)
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    PreconditionRequired:
+      description: Немає If-Match
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Unprocessable:
+      description: Неправильні дані або той самий ключ ідемпотентності з іншим тілом
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    TooManyRequests:
+      description: Забагато запитів
+      headers:
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Unavailable:
+      description: Тимчасово недоступно
+      headers:
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"

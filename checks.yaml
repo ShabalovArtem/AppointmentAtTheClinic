@@ -1,27 +1,114 @@
-# checks.yaml для теми C02 «Запис до клініки». Засіб перевірки читає його разом з openapi.yaml.
-# Ядро перевіряється завжди; у items — лише виконані пункти поза ядром.
+# checks.yaml спільного проєкту C02 «Запис до клініки» (Web + DPC).
+# Шляхи OpenAPI — відносно цього файлу. Ядро кожного курсу перевіряється завжди; items — вибрані пункти поза ядром.
+web:
+  openapi: web/openapi.yaml
+  base: http://localhost:8080
+  items:
+    - О1.5   # список із курсором
+    - О1.6   # система, /health, журнал JSON
+    - Д2.4   # умовна зміна з If-Match (PATCH /v1/bookings/{id})
+    - Д2.5   # повторне скасування не повертає слоти вдруге
+  # Користувачі для засобу: --user reader=patient1:patient-pass --user reader2=patient2:patient-pass
+  #                         --user staff=registrar:registrar-pass
+  # До ЛР3 — заголовок X-User-Id: p-1001, p-1002, u-registrar.
+  role_names:
+    user: patient
+    staff: staff
+  instances:
+    app-a: "http://localhost:8001"
+    app-b: "http://localhost:8002"
+  gateways:
+    - "ws://localhost:8091"
+    - "ws://localhost:8092"
+  services:
+    nginx: nginx
+    app-a: app-a
+    app-b: app-b
+    postgres: postgres
+    publisher: publisher
+    worker: worker
+    gateway-a: gateway-a
+    gateway-b: gateway-b
+  log_fields:
+    time: time
+    instance: instance
+    route: route
+    status: status
+    duration: duration_ms
+  simulator_down: "/admin/unavailable?seconds={seconds}"
 
-items:
-  - О1.5   # час виконання й метрики
+dpc:
+  openapi: DPC/openapi.yaml
+  base: http://localhost:8000
+  items:
+    - О1.5   # час виконання й метрики
+  services:
+    api: api
+    spark-worker-1: spark-worker-1
+    stream: stream
+    coordinator-a: coordinator-a
+    coordinator-b: coordinator-b
+  load_s: 10
+  resource:
+    path: /v1/doctor-day/dd-main
+    ok_field: invariant_ok
+  metrics:
+    - queue_length
+    - processing
+    - rejected
 
-services:
-  api: api
-  spark-worker-1: spark-worker-1
-  stream: stream
-  coordinator-a: coordinator-a
-  coordinator-b: coordinator-b
-
-load_s: 10
-
-# O1.4: стан ресурсу з полем інваріанта (dd-main є в демоданих, приклад normal подає саме туди)
-resource:
-  path: /v1/doctor-day/dd-main
-  ok_field: invariant_ok
-
-# O1.5: імена в /metrics
-metrics:
-  - queue_length
-  - processing
-  - rejected
-
-# Розділи ЛР2–ЛР6 заповнюються разом із відповідними роботами.
+# Наскрізний сценарій: пацієнт записується через сайт (Web), кол-центр (DPC) намагається записати
+# того самого пацієнта до того самого лікаря на той самий день — спільне правило відхиляє другий
+# активний запис; спільний ресурс dd-main лишається узгодженим.
+scenario:
+  - name: web-create
+    part: web
+    user: reader
+    method: POST
+    path: /v1/bookings
+    headers:
+      X-User-Id: p-1001
+    body:
+      doctor_day_id: dd-main
+      slots: 1
+    idempotent: true
+    status: 201
+    save: booking
+  - name: dpc-submit-same-patient
+    part: dpc
+    method: POST
+    path: /v1/booking-requests
+    body:
+      request_id: "joint-{uuid}"
+      doctor_day_id: dd-main
+      patient_id: p-1001
+      slots: 1
+    status: 202
+    save: request
+  - name: dpc-result
+    part: dpc
+    method: GET
+    path: "/v1/booking-requests/{request}"
+    status: 200
+    expect:
+      state: rejected
+      reason: patient-already-booked
+    wait: 30
+  - name: shared-resource
+    part: dpc
+    method: GET
+    path: /v1/doctor-day/dd-main
+    status: 200
+    expect:
+      invariant_ok: true
+  - name: web-result
+    part: web
+    user: reader
+    method: GET
+    path: "/v1/bookings/{booking}"
+    headers:
+      X-User-Id: p-1001
+    status: 200
+    expect:
+      id: "{booking}"
+      status: held

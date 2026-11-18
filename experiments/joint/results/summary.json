@@ -1,0 +1,36 @@
+{
+  "doctor_day": "dd-joint",
+  "slots_total": 10,
+  "web_requests": 5,
+  "web_statuses": {
+    "201": 5
+  },
+  "call_center_requests": 20,
+  "call_center_submit_statuses": {
+    "202": 20
+  },
+  "call_center_final": {
+    "rejected:patient-already-booked": 1,
+    "rejected:no-free-slots": 14,
+    "done:": 5
+  },
+  "p-1001": {
+    "web": 201,
+    "call_center": "rejected:patient-already-booked"
+  },
+  "seconds": 3.11,
+  "resource_after": {
+    "id": "dd-joint",
+    "doctor_id": "doc-4",
+    "specialty": "невролог",
+    "day": "2026-12-04",
+    "slots_total": 10,
+    "slots_taken": 10,
+    "slots_free": 0,
+    "closed": false,
+    "booked": 10,
+    "bookings": 10,
+    "web_bookings": 5,
+    "invariant_ok": true
+  }
+}

@@ -1,0 +1,5 @@
+# Standalone DPC: infrastructure + services. The joint project with Web uses ../compose.yaml.
+#   cp .env.example .env && docker compose up -d --build api
+include:
+  - compose.infra.yaml
+  - compose.services.yaml

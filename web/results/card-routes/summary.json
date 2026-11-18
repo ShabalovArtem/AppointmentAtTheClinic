@@ -1,0 +1,269 @@
+[
+  {
+    "check": "реєстрація пацієнта — 201, токен, роль patient",
+    "ok": true,
+    "evidence": {
+      "status": 201,
+      "user": {
+        "id": "p-7263f5f11415",
+        "login": "patient-a20385",
+        "name": "Тест Пацієнт",
+        "role": "patient"
+      }
+    }
+  },
+  {
+    "check": "той самий логін — 409",
+    "ok": true,
+    "evidence": {
+      "status": 409
+    }
+  },
+  {
+    "check": "неправильні дані реєстрації — 422",
+    "ok": true,
+    "evidence": {
+      "status": 422,
+      "errors": [
+        {
+          "field": "body.login",
+          "message": "String should match pattern '^[A-Za-z0-9._-]{3,40}$'"
+        },
+        {
+          "field": "body.password",
+          "message": "String should have at least 8 characters"
+        },
+        {
+          "field": "body.name",
+          "message": "String should have at least 2 characters"
+        }
+      ]
+    }
+  },
+  {
+    "check": "GET /v1/me з токеном",
+    "ok": true,
+    "evidence": {
+      "status": 200,
+      "body": {
+        "id": "p-7263f5f11415",
+        "login": "patient-a20385",
+        "name": "Тест Пацієнт",
+        "role": "patient"
+      }
+    }
+  },
+  {
+    "check": "хибний пароль — 401",
+    "ok": true,
+    "evidence": {
+      "status": 401
+    }
+  },
+  {
+    "check": "вхід (логін без урахування регістру) — 200",
+    "ok": true,
+    "evidence": {
+      "status": 200
+    }
+  },
+  {
+    "check": "вихід — 204, токен більше не діє (на будь-якому екземплярі)",
+    "ok": true,
+    "evidence": {
+      "logout": 204,
+      "me_after": 401
+    }
+  },
+  {
+    "check": "неправильний токен — 401",
+    "ok": true,
+    "evidence": {
+      "status": 401
+    }
+  },
+  {
+    "check": "новий пацієнт записується — 201",
+    "ok": true,
+    "evidence": {
+      "status": 201
+    }
+  },
+  {
+    "check": "інший пацієнт не бачить запису — 404",
+    "ok": true,
+    "evidence": {
+      "status": 404
+    }
+  },
+  {
+    "check": "PATCH без If-Match — 428",
+    "ok": true,
+    "evidence": {
+      "status": 428
+    }
+  },
+  {
+    "check": "PATCH з поточним ETag — 200, нова версія",
+    "ok": true,
+    "evidence": {
+      "status": 200,
+      "etag_before": "\"1\"",
+      "etag_after": "\"2\""
+    }
+  },
+  {
+    "check": "PATCH зі старим ETag — 412 (зміна не загубилась)",
+    "ok": true,
+    "evidence": {
+      "status": 412
+    }
+  },
+  {
+    "check": "PATCH стану — 422",
+    "ok": true,
+    "evidence": {
+      "status": 422
+    }
+  },
+  {
+    "check": "скасування повертає 2 слоти; повтор — той самий стан, слоти вдруге не повертаються",
+    "ok": true,
+    "evidence": {
+      "free_before": 17,
+      "after_cancel": 19,
+      "after_repeat": 19,
+      "cancel_reason": "patient"
+    }
+  },
+  {
+    "check": "скасований запис не змінюється — 409",
+    "ok": true,
+    "evidence": {
+      "status": 409
+    }
+  },
+  {
+    "check": "пацієнт не може закрити день — 403",
+    "ok": true,
+    "evidence": {
+      "status": 403
+    }
+  },
+  {
+    "check": "реєстратор закриває день — 200, активний запис скасовано",
+    "ok": true,
+    "evidence": {
+      "status": 200,
+      "body": {
+        "id": "dd-doc4-1203",
+        "day": "2026-12-03",
+        "clinic_tz": "Europe/Kyiv",
+        "slots_total": 20,
+        "slots_free": 20,
+        "slot_minutes": 15,
+        "price": {
+          "amount_minor": 70000,
+          "currency": "UAH"
+        },
+        "closed": true,
+        "doctor": {
+          "id": "doc-4",
+          "full_name": "Гнатюк Тарас Ігорович",
+          "specialty": "невролог"
+        },
+        "cancelled_bookings": [
+          "bk-d5b76c2cfe9242e1b4bf"
+        ]
+      }
+    }
+  },
+  {
+    "check": "пацієнт бачить скасування з причиною day-closed",
+    "ok": true,
+    "evidence": {
+      "id": "bk-d5b76c2cfe9242e1b4bf",
+      "status": "cancelled",
+      "channel": "web",
+      "patient_id": "p-7263f5f11415",
+      "doctor_day_id": "dd-doc4-1203",
+      "doctor": {
+        "id": "doc-4",
+        "full_name": "Гнатюк Тарас Ігорович",
+        "specialty": "невролог"
+      },
+      "day": "2026-12-03",
+      "clinic_tz": "Europe/Kyiv",
+      "slots": 1,
+      "visit_reason": null,
+      "price": {
+        "amount_minor": 70000,
+        "currency": "UAH"
+      },
+      "version": "2",
+      "created_at": "2026-11-18T18:32:35.456824+00:00",
+      "expires_at": "2026-11-18T18:47:35.456824+00:00",
+      "cancelled_at": "2026-11-18T18:32:35.468150+00:00",
+      "cancel_reason": "day-closed"
+    }
+  },
+  {
+    "check": "новий запис сайту на закритий день — 409",
+    "ok": true,
+    "evidence": {
+      "status": 409,
+      "body": {
+        "type": "https://example.edu/problems/day-closed",
+        "title": "Doctor day is closed for booking",
+        "status": 409,
+        "detail": "doctor_day_id=dd-doc4-1203, slots=1",
+        "instance": "/v1/bookings"
+      }
+    }
+  },
+  {
+    "check": "кол-центр DPC на закритий день — rejected/day-closed (одне правило)",
+    "ok": true,
+    "evidence": {
+      "id": "closed-1be872cb",
+      "doctor_day_id": "dd-doc4-1203",
+      "patient_id": "p-1003",
+      "slots": 1,
+      "state": "rejected",
+      "reason": "day-closed",
+      "received_at": "2026-11-18T18:32:35.485010Z",
+      "started_at": "2026-11-18T18:32:35.486453Z",
+      "finished_at": "2026-11-18T18:32:35.833878Z",
+      "timing": {
+        "queue_wait_ms": 2.1,
+        "processing_ms": 349.3,
+        "delivery_wait_ms": 166.2,
+        "total_ms": 351.4
+      }
+    }
+  },
+  {
+    "check": "закритий день зник із каталогу сайту",
+    "ok": true,
+    "evidence": {
+      "days": [
+        "dd-doc4-1202",
+        "dd-joint"
+      ]
+    }
+  },
+  {
+    "check": "розклад реєстратури показує закритий день",
+    "ok": true,
+    "evidence": {
+      "status": 200
+    }
+  },
+  {
+    "check": "розклад реєстратури пацієнту — 403",
+    "ok": true,
+    "evidence": {
+      "status": 403
+    }
+  }
+]
