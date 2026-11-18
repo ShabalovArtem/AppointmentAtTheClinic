@@ -1,0 +1,624 @@
+# Контракт (OpenAPI 3.1) сервісу api, тема C02 «Запис до клініки».
+# Кол-центр подає запит на запис; запит потрапляє в обмежену чергу, обробник перевіряє поліс
+# у страховій і займає слоти дня лікаря (doctor_day).
+# x-course позначає ролі для засобу перевірки: receiver, request-state, resource-state.
+# "{uuid}" у прикладі стає новим ідентифікатором у кожному запиті.
+openapi: 3.1.0
+info:
+  title: Мережа клінік — запис до лікаря
+  version: 1.0.0
+  description: |
+    Контракт сервісу `api`. Маршрути `/v1` потребують `Authorization: Bearer <API_TOKEN>`.
+    Помилки — Problem Details (RFC 9457, `application/problem+json`).
+    Час у відповідях — UTC, ISO 8601 з позначкою Z, точність до мілісекунд.
+servers:
+  - url: http://localhost:8000
+security:
+  - apiToken: []
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Перевірка працездатності процесу. Швидка відповідь навіть під навантаженням
+      security: []
+      responses:
+        "200":
+          description: Процес відповідає
+  /metrics:
+    get:
+      operationId: getMetrics
+      summary: Перцентилі затримки HTTP, довжина черги, обробники, відмови, час виконання запитів
+      security: []
+      responses:
+        "200":
+          description: Метрики
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  latency_ms:
+                    type: object
+                    description: Час HTTP-відповіді предметних маршрутів (останні 2000), не час виконання запиту
+                    properties:
+                      p50:
+                        type:
+                          - number
+                          - "null"
+                      p95:
+                        type:
+                          - number
+                          - "null"
+                      p99:
+                        type:
+                          - number
+                          - "null"
+                  in_flight:
+                    type: integer
+                  queue_length:
+                    type: integer
+                  queue_capacity:
+                    type: integer
+                  workers:
+                    type: integer
+                  processing:
+                    type: integer
+                    description: Запити в обробленні зараз
+                  accepted:
+                    type: integer
+                  rejected:
+                    type: integer
+                    description: Відмови 429 (черга повна)
+                  outcomes:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  timing_ms:
+                    type: object
+                    description: p50/p95/p99 інтервалів останніх 2000 завершених запитів (монотонний годинник)
+                  responses:
+                    type: object
+                    additionalProperties:
+                      type: integer
+  /metrics/prom:
+    get:
+      operationId: getMetricsPrometheus
+      summary: Ті самі метрики у форматі Prometheus (для Grafana)
+      security: []
+      responses:
+        "200":
+          description: Метрики
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /v1/booking-requests:
+    post:
+      operationId: createBookingRequest
+      summary: Прийняти запит на запис до лікаря в обмежену чергу
+      x-course: receiver
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BookingCreate"
+            examples:
+              normal:
+                value:
+                  request_id: "req-{uuid}"
+                  doctor_day_id: dd-main
+                  patient_id: "p-{uuid}"
+                  slots: 1
+      responses:
+        "202":
+          description: Прийнято в чергу
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Accepted"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/ShuttingDown"
+  /v1/booking-requests/{id}:
+    get:
+      operationId: getBookingRequest
+      summary: Стан запиту на запис. Перша видача кінцевого стану фіксує позначку first_read
+      x-course: request-state
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Стан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RequestState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/doctor-days:
+    get:
+      operationId: listDoctorDays
+      summary: Довідник днів лікарів (для клієнта)
+      responses:
+        "200":
+          description: Дні лікарів
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/doctor-day/{id}:
+    get:
+      operationId: getDoctorDay
+      summary: День лікаря. Інваріант — slots_taken дорівнює сумі зайнятих слотів і не більший за slots_total
+      x-course: resource-state
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          example: dd-main
+      responses:
+        "200":
+          description: Стан ресурсу
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DoctorDay"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /v1/compute:
+    post:
+      operationId: startCompute
+      summary: Розрахунок ЛР2
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - a
+                - b
+                - n
+                - workers
+              properties:
+                a:
+                  type: number
+                b:
+                  type: number
+                n:
+                  type: integer
+                  minimum: 1
+                  description: Кількість частин поділу проміжку
+                workers:
+                  type: integer
+                  enum:
+                    - 1
+                    - 2
+                    - 4
+                method:
+                  type: string
+                  enum:
+                    - midpoint
+                    - trapezoid
+                    - simpson
+                order:
+                  type: string
+                  description: Порядок сумування
+            examples:
+              normal:
+                value:
+                  a: 0
+                  b: 12
+                  n: 20000000
+                  workers: 4
+      responses:
+        "202":
+          description: Розрахунок прийнято
+          headers:
+            Location:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputeJob"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/compute/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      operationId: getCompute
+      summary: Стан і результат розрахунку
+      responses:
+        "200":
+          description: Стан
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputeJob"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: cancelCompute
+      summary: Скасування розрахунку
+      responses:
+        "202":
+          description: Скасування прийнято
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputeJob"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/histogram:
+    get:
+      operationId: getHistogram
+      summary: Паралельна гістограма предметної величини
+      responses:
+        "200":
+          description: Гістограма
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /v1/reports/main/refresh:
+    post:
+      operationId: refreshReport
+      summary: Запустити звіт Spark (через запускач задач)
+      responses:
+        "202":
+          description: Звіт запущено
+          content:
+            application/json:
+              schema:
+                type: object
+        "409":
+          $ref: "#/components/responses/Conflict"
+  /v1/reports/main:
+    get:
+      operationId: getReport
+      summary: Опублікований звіт
+      responses:
+        "200":
+          description: Звіт
+          content:
+            application/json:
+              schema:
+                type: object
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /v1/reports/main/reference:
+    get:
+      operationId: getReportReference
+      summary: Незалежний еталон звіту
+      responses:
+        "200":
+          description: Еталон
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /v1/panel:
+    get:
+      operationId: getPanel
+      summary: Фіналізовані вікна потокової задачі
+      responses:
+        "200":
+          description: Вікна
+          content:
+            application/json:
+              schema:
+                type: object
+  /v1/panel/batch:
+    get:
+      operationId: getPanelBatch
+      summary: Ті самі вікна, пакетний розрахунок
+      responses:
+        "200":
+          description: Вікна
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /v1/coordinator:
+    get:
+      operationId: getCoordinator
+      summary: Власник ролі й покоління
+      responses:
+        "200":
+          description: Власник
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  owner:
+                    type:
+                      - string
+                      - "null"
+                  generation:
+                    type:
+                      - integer
+                      - "null"
+  /v1/history:
+    get:
+      operationId: getHistory
+      summary: Історія операцій ресурсу
+      responses:
+        "200":
+          description: Історія
+          content:
+            application/json:
+              schema:
+                type: object
+
+components:
+  securitySchemes:
+    apiToken:
+      type: http
+      scheme: bearer
+  schemas:
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+      properties:
+        type:
+          type: string
+          format: uri
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+    BookingCreate:
+      type: object
+      required:
+        - request_id
+        - doctor_day_id
+        - patient_id
+      properties:
+        request_id:
+          type: string
+          pattern: "^[A-Za-z0-9._:-]{1,128}$"
+          description: Ідентифікатор запиту й ключ ефекту «зайняття слоту»
+        doctor_day_id:
+          type: string
+        patient_id:
+          type: string
+          description: Пацієнти `invalid-...` мають недійсний поліс (імітація страхової)
+        slots:
+          type: integer
+          minimum: 1
+          maximum: 8
+          default: 1
+    Accepted:
+      type: object
+      required:
+        - id
+        - state
+      properties:
+        id:
+          type: string
+        state:
+          type: string
+          const: queued
+        location:
+          type: string
+    DoctorDay:
+      type: object
+      required:
+        - id
+        - slots_total
+        - slots_taken
+        - booked
+        - invariant_ok
+      properties:
+        id:
+          type: string
+        doctor_id:
+          type: string
+        specialty:
+          type: string
+        day:
+          type: string
+          format: date
+        slots_total:
+          type: integer
+        slots_taken:
+          type: integer
+        slots_free:
+          type: integer
+        booked:
+          type: integer
+          description: Фактична сума слотів у записах booking
+        bookings:
+          type: integer
+        invariant_ok:
+          type: boolean
+    RequestState:
+      type: object
+      required:
+        - id
+        - state
+      properties:
+        id:
+          type: string
+        doctor_day_id:
+          type: string
+        patient_id:
+          type: string
+        slots:
+          type: integer
+        state:
+          type: string
+          enum:
+            - queued
+            - processing
+            - done
+            - rejected
+            - failed
+        reason:
+          type:
+            - string
+            - "null"
+          description: rejected — no-free-slots або policy-invalid; failed — тип помилки
+        received_at:
+          type: string
+          format: date-time
+        started_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        finished_at:
+          type:
+            - string
+            - "null"
+          format: date-time
+        timing:
+          type: object
+          description: Інтервали монотонного годинника сервера, мс (null — позначки ще немає)
+          properties:
+            queue_wait_ms:
+              type:
+                - number
+                - "null"
+            processing_ms:
+              type:
+                - number
+                - "null"
+            delivery_wait_ms:
+              type:
+                - number
+                - "null"
+            total_ms:
+              type:
+                - number
+                - "null"
+    ComputeJob:
+      type: object
+      required:
+        - id
+        - state
+      properties:
+        id:
+          type: string
+        state:
+          type: string
+          enum:
+            - running
+            - done
+            - cancelled
+            - failed
+        active_parts:
+          type: integer
+          description: Скільки частин ще обчислюється (скасування — до нуля)
+        result:
+          type:
+            - object
+            - "null"
+          description: Немає після скасування
+          properties:
+            value:
+              type: number
+            reference:
+              type: number
+            error:
+              type: number
+            wall_s:
+              type: number
+            workers:
+              type: integer
+  responses:
+    BadRequest:
+      description: Некоректний запит
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Unauthorized:
+      description: Потрібен токен API
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    NotFound:
+      description: Не знайдено
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    Conflict:
+      description: Конфлікт із поточним станом
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    ShuttingDown:
+      description: Сервіс завершує роботу й нових запитів не приймає
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    TooManyRequests:
+      description: Черга заповнена
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"

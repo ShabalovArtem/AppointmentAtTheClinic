@@ -1,0 +1,41 @@
+{
+  "resource_mode": "locked",
+  "workers": 4,
+  "queue_capacity": 50,
+  "requests": 40,
+  "submit_statuses": {
+    "202": 40
+  },
+  "final_states": {
+    "rejected": 20,
+    "done": 20
+  },
+  "reasons": {
+    "no-free-slots": 20
+  },
+  "seconds": 5.91,
+  "resource_before": {
+    "id": "race-locked",
+    "doctor_id": "doc-3",
+    "specialty": "педіатр",
+    "day": "2026-12-01",
+    "slots_total": 20,
+    "slots_taken": 0,
+    "slots_free": 20,
+    "booked": 0,
+    "bookings": 0,
+    "invariant_ok": true
+  },
+  "resource_after": {
+    "id": "race-locked",
+    "doctor_id": "doc-3",
+    "specialty": "педіатр",
+    "day": "2026-12-01",
+    "slots_total": 20,
+    "slots_taken": 20,
+    "slots_free": 0,
+    "booked": 20,
+    "bookings": 20,
+    "invariant_ok": true
+  }
+}

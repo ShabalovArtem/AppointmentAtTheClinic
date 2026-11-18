@@ -1,0 +1,124 @@
+{
+  "params": {
+    "clients": 16,
+    "seconds": 30.0,
+    "doctor_day": "dd-main",
+    "queue_capacity": 50,
+    "workers": 4
+  },
+  "load_seconds": 30.1,
+  "submits": 10272,
+  "statuses": {
+    "202": 287,
+    "429": 9985
+  },
+  "all_429_have_retry_after": true,
+  "refused_checked": 500,
+  "refused_found_in_system": 0,
+  "max_queue_length": 50,
+  "max_processing": 4,
+  "health": {
+    "n": 575,
+    "errors": 0,
+    "p50_ms": 1.35,
+    "p95_ms": 3.61,
+    "p99_ms": 7.32,
+    "max_ms": 43.15
+  },
+  "accepted_final_states": {
+    "done": 287
+  },
+  "timing_this_run_ms": {
+    "queue_wait_ms": {
+      "n": 287,
+      "p50": 6378.0,
+      "p95": 6920.6,
+      "p99": 7098.7
+    },
+    "processing_ms": {
+      "n": 287,
+      "p50": 520.8,
+      "p95": 759.1,
+      "p99": 800.1
+    },
+    "total_ms": {
+      "n": 287,
+      "p50": 6871.3,
+      "p95": 7498.0,
+      "p99": 7686.5
+    },
+    "delivery_wait_ms": {
+      "n": 287,
+      "p50": 18980.1,
+      "p95": 35063.6,
+      "p99": 36819.4
+    }
+  },
+  "server_metrics_after": {
+    "uptime_s": 43.0,
+    "latency_ms": {
+      "p50": 42.9,
+      "p95": 49.1,
+      "p99": 51.4
+    },
+    "in_flight": 1,
+    "responses": {
+      "200": 996,
+      "202": 287,
+      "404": 500,
+      "429": 9985
+    },
+    "queue_length": 0,
+    "queue_capacity": 50,
+    "workers": 4,
+    "processing": 0,
+    "accepted": 287,
+    "rejected": 9985,
+    "rejected_shutdown": 0,
+    "outcomes": {
+      "done": 287,
+      "rejected": 0,
+      "failed": 0
+    },
+    "timing_order_violations": 0,
+    "timing_ms": {
+      "queue_wait_ms": {
+        "n": 287,
+        "p50": 6378.0,
+        "p95": 6920.6,
+        "p99": 7098.7
+      },
+      "processing_ms": {
+        "n": 287,
+        "p50": 520.8,
+        "p95": 759.1,
+        "p99": 800.1
+      },
+      "total_ms": {
+        "n": 287,
+        "p50": 6871.3,
+        "p95": 7498.0,
+        "p99": 7686.5
+      },
+      "delivery_wait_ms": {
+        "n": 287,
+        "p50": 18980.1,
+        "p95": 35063.6,
+        "p99": 36819.4
+      }
+    },
+    "resource_mode": "locked"
+  },
+  "resource_after": {
+    "id": "dd-main",
+    "doctor_id": "doc-1",
+    "specialty": "терапевт",
+    "day": "2026-12-01",
+    "slots_total": 100000,
+    "slots_taken": 1497,
+    "slots_free": 98503,
+    "booked": 1497,
+    "bookings": 1497,
+    "invariant_ok": true
+  }
+}

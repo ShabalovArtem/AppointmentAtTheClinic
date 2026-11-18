@@ -1,0 +1,27 @@
+# checks.yaml для теми C02 «Запис до клініки». Засіб перевірки читає його разом з openapi.yaml.
+# Ядро перевіряється завжди; у items — лише виконані пункти поза ядром.
+
+items:
+  - О1.5   # час виконання й метрики
+
+services:
+  api: api
+  spark-worker-1: spark-worker-1
+  stream: stream
+  coordinator-a: coordinator-a
+  coordinator-b: coordinator-b
+
+load_s: 10
+
+# O1.4: стан ресурсу з полем інваріанта (dd-main є в демоданих, приклад normal подає саме туди)
+resource:
+  path: /v1/doctor-day/dd-main
+  ok_field: invariant_ok
+
+# O1.5: імена в /metrics
+metrics:
+  - queue_length
+  - processing
+  - rejected
+
+# Розділи ЛР2–ЛР6 заповнюються разом із відповідними роботами.

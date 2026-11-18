@@ -1,0 +1,286 @@
+<!doctype html>
+<!-- Клієнт кол-центру C02 «Запис до клініки». Запуск поза Compose:
+     python -m http.server 8083 --bind 127.0.0.1 --directory client  ->  http://localhost:8083 -->
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Запис до клініки</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+    <div class="brand">
+        <h1>🏥 Клініка: запис до лікаря</h1>
+        <span>C02 · проєкт курсу DPC</span>
+    </div>
+    <div class="links">
+        <span id="api-pill" class="pill"><span class="dot"></span><span>API: …</span></span>
+        <a class="pill" href="http://localhost:8265" target="_blank" rel="noopener">Ray dashboard</a>
+        <a class="pill" href="http://localhost:8280" target="_blank" rel="noopener">Spark UI</a>
+        <a class="pill" href="http://localhost:8185" target="_blank" rel="noopener">Kafka UI</a>
+        <a class="pill" href="http://localhost:3001" target="_blank" rel="noopener">Grafana</a>
+    </div>
+    <label class="token">токен <input id="token" autocomplete="off"></label>
+</header>
+
+<nav class="tabs" role="tablist">
+    <button role="tab" data-tab="lab1">ЛР1 Черга й пул<span class="state">✓</span></button>
+    <button role="tab" data-tab="lab2">ЛР2 Розрахунок</button>
+    <button role="tab" data-tab="lab3">ЛР3 Ray</button>
+    <button role="tab" data-tab="lab4">ЛР4 Spark</button>
+    <button role="tab" data-tab="lab5">ЛР5 Потік</button>
+    <button role="tab" data-tab="lab6">ЛР6 Координація</button>
+</nav>
+
+<main>
+    <!-- ================================================================ ЛР1 -->
+    <section class="lab" id="lab1">
+        <p class="lab-intro">
+            <b>Сервіс із чергою.</b> Запит на запис потрапляє в обмежену чергу (повна черга — одразу <b>429</b>),
+            обробник перевіряє поліс у страховій (200–800 мс) і займає слоти дня лікаря під блокуванням.
+            Інваріант: <b>зайнято = сума записів ≤ усього слотів</b>.
+        </p>
+        <div class="grid">
+            <div class="card">
+                <h2>Запис до лікаря</h2>
+                <label class="field"><span>День лікаря</span>
+                    <select id="l1-day"></select>
+                </label>
+                <div class="row">
+                    <label class="field" style="flex:1"><span>Пацієнт</span><input id="l1-patient" value="p-1001"></label>
+                    <label class="field"><span>Слотів</span><input id="l1-slots" class="narrow" type="number" min="1" max="8" value="1"></label>
+                </div>
+                <div class="row">
+                    <label><input type="checkbox" id="l1-invalid"> недійсний поліс (відхилення за правилом)</label>
+                </div>
+                <button class="btn primary" id="l1-book">Записати</button>
+
+                <h3>Перевантаження (О1.2)</h3>
+                <div class="row">
+                    <label>запитів</label><input id="l1-burst-n" class="narrow" type="number" min="1" max="500" value="80">
+                    <button class="btn" id="l1-burst">Надіслати серію одночасно</button>
+                </div>
+                <p class="hint">Черга вміщує <span class="cap">50</span> запитів; решта отримує 429 з Retry-After і в систему не потрапляє.</p>
+
+                <h3>Гонка за слоти (О1.4)</h3>
+                <div class="row">
+                    <select id="l1-race-day">
+                        <option value="race-locked">race-locked</option>
+                        <option value="race-unprotected">race-unprotected</option>
+                    </select>
+                    <button class="btn" id="l1-race">40 запитів на 20 слотів</button>
+                </div>
+                <p class="hint">Режим задає сервер: <code>RESOURCE_MODE</code> (зараз — <b id="l1-mode">…</b>).
+                    Перед повтором ресурс скидається <code>experiments/lab1/reset.sql</code>.</p>
+
+                <h3>Журнал</h3>
+                <div class="log" id="l1-log"></div>
+            </div>
+
+            <div class="card">
+                <h2>Черга й обробники</h2>
+                <div class="row" style="justify-content:space-between">
+                    <span>Черга</span><span id="l1-qtext" class="badge">0 / 50</span>
+                </div>
+                <div class="bar" id="l1-qbar"><div style="width:0"></div><span></span></div>
+
+                <h3>Обробники (<span id="l1-wcount">4</span>)</h3>
+                <div class="workers" id="l1-workers"></div>
+
+                <h3>Лічильники</h3>
+                <div class="stats">
+                    <div class="stat"><b id="m-accepted">0</b><small>прийнято (202)</small></div>
+                    <div class="stat warn"><b id="m-rejected">0</b><small>відмов 429</small></div>
+                    <div class="stat"><b id="m-processing">0</b><small>в обробці</small></div>
+                    <div class="stat ok"><b id="m-done">0</b><small>done</small></div>
+                    <div class="stat warn"><b id="m-domain">0</b><small>rejected</small></div>
+                    <div class="stat bad"><b id="m-failed">0</b><small>failed</small></div>
+                </div>
+
+                <h3>Час виконання, мс (О1.5)</h3>
+                <table>
+                    <thead><tr><th>інтервал</th><th class="num">n</th><th class="num">p50</th><th class="num">p95</th><th class="num">p99</th></tr></thead>
+                    <tbody id="l1-timing"></tbody>
+                </table>
+                <p class="hint">Вибірка — останні 2000 завершених запитів процесу <code>api</code>, монотонний годинник сервера.
+                    <br>HTTP-відповідь предметних маршрутів p95: <b id="m-http">—</b> мс · <code>/health</code> з браузера: <b id="m-health">—</b> мс</p>
+            </div>
+
+            <div class="card">
+                <h2>День лікаря <span id="l1-res-title" class="badge"></span></h2>
+                <div id="l1-res"></div>
+
+                <h3>Мої запити</h3>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>запит</th><th>стан</th><th class="num">черга</th><th class="num">обробка</th><th class="num">разом</th></tr></thead>
+                        <tbody id="l1-requests"><tr class="empty"><td colspan="5">Ще немає запитів</td></tr></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================================================================ ЛР2 -->
+    <section class="lab" id="lab2">
+        <p class="lab-intro">
+            <b>Паралельний розрахунок.</b> Q(t) = a·t²·(T − t) — кількість людей у черзі реєстратури; інтеграл на [0; T] —
+            сумарне очікування за день у людино-годинах. Еталон через первісну: a·T⁴/12.
+        </p>
+        <div class="planned" data-planned="/v1/compute">Маршрути цієї роботи ще не реалізовані — кнопки покажуть відповідь сервера.</div>
+        <div class="grid">
+            <div class="card">
+                <h2>Розрахунок інтеграла</h2>
+                <div class="row">
+                    <label class="field"><span>від a, год</span><input id="l2-a" class="narrow" value="0"></label>
+                    <label class="field"><span>до b = T, год</span><input id="l2-b" class="narrow" value="12"></label>
+                    <label class="field" style="flex:1"><span>n частин</span><input id="l2-n" value="20000000"></label>
+                </div>
+                <div class="row">
+                    <label class="field"><span>процесів</span>
+                        <select id="l2-workers"><option>1</option><option>2</option><option selected>4</option></select></label>
+                    <label class="field"><span>метод</span>
+                        <select id="l2-method"><option value="midpoint">середніх прямокутників</option><option value="trapezoid">трапецій</option><option value="simpson">Сімпсона</option></select></label>
+                    <label class="field"><span>спільна сума</span>
+                        <select id="l2-mode"><option value="local">локальні суми</option><option value="lock">з блокуванням</option><option value="none">без синхронізації</option></select></label>
+                </div>
+                <div class="row"><label><input type="checkbox" id="l2-async"> асинхронно (Д2.6)</label></div>
+                <button class="btn primary" id="l2-run">Обчислити</button>
+                <button class="btn" id="l2-cancel" disabled>Скасувати</button>
+            </div>
+            <div class="card">
+                <h2>Результат</h2>
+                <div id="l2-summary"></div>
+                <pre class="out" id="l2-out">—</pre>
+            </div>
+            <div class="card">
+                <h2>Гістограма запізнень пацієнтів (Д2.5)</h2>
+                <button class="btn" id="l2-hist">Побудувати</button>
+                <div id="l2-hist-view" style="margin-top:12px"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================================================================ ЛР3 -->
+    <section class="lab" id="lab3">
+        <p class="lab-intro">
+            <b>Ray і відновлення.</b> Обробка запитів переходить у задачі Ray; слот займає приймач ефекту, ключ ефекту —
+            <code>request_id</code>. Повтор задачі після відмови не займає слот удруге.
+        </p>
+        <div class="planned">Задачі Ray ще не підключені (<code>EXECUTION=ray</code>). Запити вкладки ЛР1 працюють у локальному пулі.</div>
+        <div class="grid">
+            <div class="card">
+                <h2>Керована відмова after_effect_before_ack</h2>
+                <p class="hint">Виконавець падає після запису ефекту, але до підтвердження задачі.</p>
+                <pre class="out">docker compose exec api touch /faults/after_effect_before_ack
+# подати запит на вкладці ЛР1, дочекатися повтору
+docker compose logs ray-worker | findstr fault.hit
+docker compose exec api rm -f /faults/after_effect_before_ack</pre>
+            </div>
+            <div class="card">
+                <h2>Перевірка після відмови</h2>
+                <div class="row"><select id="l3-day"></select><button class="btn" id="l3-check">Прочитати ресурс</button></div>
+                <div id="l3-res"></div>
+            </div>
+            <div class="card">
+                <h2>Незавершені задачі (О3.2)</h2>
+                <button class="btn" id="l3-metrics">Оновити метрики</button>
+                <pre class="out" id="l3-out" style="margin-top:12px">—</pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================================================================ ЛР4 -->
+    <section class="lab" id="lab4">
+        <p class="lab-intro">
+            <b>Пакетний звіт у Spark.</b> Частка неявок за лікарями й днями тижня; гарячий ключ — популярний лікар (35 % рядків).
+            Звіт порівнюється з незалежним еталоном за ключами.
+        </p>
+        <div class="planned">Задача Spark і маршрути звіту ще не реалізовані.</div>
+        <div class="grid">
+            <div class="card">
+                <h2>Звіт: неявки за лікарями й днями тижня</h2>
+                <div class="row">
+                    <button class="btn primary" id="l4-refresh">Оновити звіт</button>
+                    <button class="btn" id="l4-get">Прочитати звіт</button>
+                    <button class="btn" id="l4-compare">Порівняти з еталоном</button>
+                </div>
+                <div id="l4-status" class="hint"></div>
+            </div>
+            <div class="card">
+                <h2>Звіт</h2>
+                <div class="table-wrap"><table>
+                    <thead><tr><th>лікар</th><th>день тижня</th><th class="num">візитів</th><th class="num">неявок</th><th class="num">частка</th></tr></thead>
+                    <tbody id="l4-rows"><tr class="empty"><td colspan="5">—</td></tr></tbody>
+                </table></div>
+            </div>
+            <div class="card">
+                <h2>Порівняння з еталоном</h2>
+                <pre class="out" id="l4-out">—</pre>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================================================================ ЛР5 -->
+    <section class="lab" id="lab5">
+        <p class="lab-intro">
+            <b>Потік прибуттів.</b> Топік <code>arrivals</code>, вікно 30 хв, ключ <code>doctor_id</code>, кількість прибуттів
+            із запізненням (<code>late_min &gt; 0</code>); понад 3 — сигнал про затримку прийому.
+        </p>
+        <div class="planned">Потокова задача ще не реалізована.</div>
+        <div class="grid">
+            <div class="card">
+                <h2>Панель</h2>
+                <div class="row">
+                    <button class="btn primary" id="l5-panel">Фіналізовані вікна</button>
+                    <button class="btn" id="l5-batch">Пакетний розрахунок</button>
+                    <button class="btn" id="l5-compare">Порівняти</button>
+                </div>
+                <pre class="out" id="l5-out">—</pre>
+            </div>
+            <div class="card" style="grid-column: span 2">
+                <h2>Вікна</h2>
+                <div class="table-wrap"><table>
+                    <thead><tr><th>лікар</th><th>вікно</th><th class="num">запізнень</th><th>сигнал</th></tr></thead>
+                    <tbody id="l5-rows"><tr class="empty"><td colspan="4">—</td></tr></tbody>
+                </table></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ================================================================ ЛР6 -->
+    <section class="lab" id="lab6">
+        <p class="lab-intro">
+            <b>Координація.</b> Роль — розподільник скасованих слотів (оренда etcd, TTL ≤ 5 с). Ресурс приймає призначення
+            слоту з черги очікування лише від поточного зареєстрованого покоління.
+        </p>
+        <div class="planned">Координатори й історія ще не реалізовані.</div>
+        <div class="grid">
+            <div class="card">
+                <h2>Власник ролі</h2>
+                <div class="row">
+                    <button class="btn primary" id="l6-coord">Оновити</button>
+                    <label><input type="checkbox" id="l6-auto"> кожну секунду</label>
+                </div>
+                <div class="stats" style="grid-template-columns:1fr 1fr">
+                    <div class="stat"><b id="l6-owner">—</b><small>власник</small></div>
+                    <div class="stat"><b id="l6-gen">—</b><small>покоління</small></div>
+                </div>
+                <p class="hint">Пауза власника довше TTL: <code>docker compose pause coordinator-a</code></p>
+            </div>
+            <div class="card">
+                <h2>Історія операцій</h2>
+                <div class="row">
+                    <button class="btn" id="l6-history">Прочитати історію</button>
+                    <button class="btn" id="l6-check">Перевірити інваріант</button>
+                </div>
+                <pre class="out" id="l6-out">—</pre>
+            </div>
+        </div>
+    </section>
+</main>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
