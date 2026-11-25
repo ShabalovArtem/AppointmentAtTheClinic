@@ -5,8 +5,8 @@
     "evidence": {
       "status": 201,
       "user": {
-        "id": "p-7263f5f11415",
-        "login": "patient-a20385",
+        "id": "p-8a15a8d4f243",
+        "login": "patient-09d4df",
         "name": "Тест Пацієнт",
         "role": "patient"
       }
@@ -46,8 +46,8 @@
     "evidence": {
       "status": 200,
       "body": {
-        "id": "p-7263f5f11415",
-        "login": "patient-a20385",
+        "id": "p-8a15a8d4f243",
+        "login": "patient-09d4df",
         "name": "Тест Пацієнт",
         "role": "patient"
       }
@@ -173,7 +173,7 @@
           "specialty": "невролог"
         },
         "cancelled_bookings": [
-          "bk-d5b76c2cfe9242e1b4bf"
+          "bk-734e78b4711b4222971a"
         ]
       }
     }
@@ -182,10 +182,10 @@
     "check": "пацієнт бачить скасування з причиною day-closed",
     "ok": true,
     "evidence": {
-      "id": "bk-d5b76c2cfe9242e1b4bf",
+      "id": "bk-734e78b4711b4222971a",
       "status": "cancelled",
       "channel": "web",
-      "patient_id": "p-7263f5f11415",
+      "patient_id": "p-8a15a8d4f243",
       "doctor_day_id": "dd-doc4-1203",
       "doctor": {
         "id": "doc-4",
@@ -201,9 +201,9 @@
         "currency": "UAH"
       },
       "version": "2",
-      "created_at": "2026-11-18T18:32:35.456824+00:00",
-      "expires_at": "2026-11-18T18:47:35.456824+00:00",
-      "cancelled_at": "2026-11-18T18:32:35.468150+00:00",
+      "created_at": "2026-11-25T14:17:55.382298+00:00",
+      "expires_at": "2026-11-25T14:32:55.382298+00:00",
+      "cancelled_at": "2026-11-25T14:17:55.395395+00:00",
       "cancel_reason": "day-closed"
     }
   },
@@ -225,20 +225,20 @@
     "check": "кол-центр DPC на закритий день — rejected/day-closed (одне правило)",
     "ok": true,
     "evidence": {
-      "id": "closed-1be872cb",
+      "id": "closed-43fd7085",
       "doctor_day_id": "dd-doc4-1203",
       "patient_id": "p-1003",
       "slots": 1,
       "state": "rejected",
       "reason": "day-closed",
-      "received_at": "2026-11-18T18:32:35.485010Z",
-      "started_at": "2026-11-18T18:32:35.486453Z",
-      "finished_at": "2026-11-18T18:32:35.833878Z",
+      "received_at": "2026-11-25T14:17:55.415091Z",
+      "started_at": "2026-11-25T14:17:55.416383Z",
+      "finished_at": "2026-11-25T14:17:56.163418Z",
       "timing": {
-        "queue_wait_ms": 2.1,
-        "processing_ms": 349.3,
-        "delivery_wait_ms": 166.2,
-        "total_ms": 351.4
+        "queue_wait_ms": 2.3,
+        "processing_ms": 749.5,
+        "delivery_wait_ms": 19.4,
+        "total_ms": 751.8
       }
     }
   },
@@ -247,8 +247,7 @@
     "ok": true,
     "evidence": {
       "days": [
-        "dd-doc4-1202",
-        "dd-joint"
+        "dd-doc4-1202"
       ]
     }
   },

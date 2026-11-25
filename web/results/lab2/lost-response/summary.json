@@ -1,0 +1,36 @@
+{
+  "key": "lost-b06f1afa-1bf1-4e29-a877-afea5afc8253",
+  "attempt_1_app_a": {
+    "status": 0,
+    "note": "0 = з'єднання обірвано, відповіді немає",
+    "seconds": 0.03
+  },
+  "after_crash": {
+    "slots_taken": 2,
+    "booked": 2
+  },
+  "attempt_2_app_b": {
+    "status": 201,
+    "id": "bk-49aef2e781354ef8bd58",
+    "instance": "app-b",
+    "replayed": "true"
+  },
+  "attempt_3_app_a_restarted": {
+    "status": 201,
+    "id": "bk-49aef2e781354ef8bd58",
+    "instance": "app-a",
+    "replayed": "true"
+  },
+  "resource_before": {
+    "slots_taken": 0,
+    "booked": 0
+  },
+  "resource_after": {
+    "slots_taken": 2,
+    "booked": 2,
+    "invariant_ok": true
+  },
+  "bookings_of_patient": 1,
+  "fault_hit_log": "app-a-1  | {\"time\": \"2026-11-25T14:10:31.675+00:00\", \"instance\": \"app-a\", \"event\": \"fault.hit\", \"place\": \"after_commit_before_response\"}",
+  "ok": true
+}

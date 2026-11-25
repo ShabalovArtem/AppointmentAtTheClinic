@@ -1,7 +1,7 @@
 // Сайт клініки C02: вхід і реєстрація пацієнта, каталог лікарів, запис (головна операція),
 // мої записи з курсором, зміна причини (If-Match), скасування, реєстратура (закриття дня).
 // Відповіді читаються за відомими полями — невідомі додаткові поля нічого не ламають (О1.7).
-import {API, call, onCall, Problem, setToken} from "./api.js";
+import {API, call, callWithRetry, newKey, onCall, Problem, setToken, UnknownOutcome} from "./api.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "").replace(/[&<>"]/g, (c) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"})[c]);
@@ -243,23 +243,43 @@ async function loadDays() {
     }
 }
 
-async function book(doctorDayId, slots) {
+/** Нова дія користувача — новий ключ; «Перевірити ще раз» після невідомого результату — той самий ключ і тіло. */
+async function book(doctorDayId, slots, retryOf = null) {
     if (!me) {
         $("book-result").innerHTML = `<div class="problem-box">Щоб записатися, увійдіть або зареєструйтеся (картка «Вхід» угорі).</div>`;
         return;
     }
     const reason = $("reason").value.trim();
-    $("book-result").innerHTML = `<p class="hint">Записуємо…</p>`;
+    const body = retryOf?.body ?? {doctor_day_id: doctorDayId, slots, ...(reason ? {visit_reason: reason} : {})};
+    const key = retryOf?.key ?? newKey();
+    const attemptsLog = [];
+    $("book-result").innerHTML = `<p class="hint">Записуємо… (Idempotency-Key <code>${esc(key.slice(0, 8))}…</code>)</p>`;
     try {
-        const {data, headers} = await call("POST", "/v1/bookings", {
-            body: {doctor_day_id: doctorDayId, slots, ...(reason ? {visit_reason: reason} : {})},
+        const {data, headers, attempts} = await callWithRetry("POST", "/v1/bookings", {
+            body, idempotencyKey: key,
+            onRetry: ({attempt, delay, status}) => {
+                attemptsLog.push(`спроба ${attempt}: ${status ? `HTTP ${status}` : "немає відповіді"}, повтор через ${(delay / 1000).toFixed(1)} с`);
+                $("book-result").innerHTML = `<p class="hint">${attemptsLog.map(esc).join("<br>")}<br>Повторюємо з тим самим ключем…</p>`;
+            },
         });
+        const replayed = headers.get("idempotent-replayed") === "true";
         $("book-result").innerHTML = okHtml(`<b>201 · Запис створено</b> — ${statusBadge(data.status)}
             ${esc(data.doctor?.full_name ?? "")}, ${dayText(data.day)}, ${data.slots} сл., ${money(data.price)}.
-            Підтвердити до ${momentText(data.expires_at, data.clinic_tz)}.<br><code>${esc(headers.get("location") ?? "")}</code>`);
+            Підтвердити до ${momentText(data.expires_at, data.clinic_tz)}.<br><code>${esc(headers.get("location") ?? "")}</code>
+            ${attempts > 1 || replayed ? `<br><small>Спроба ${attempts}${replayed ? "; сервер повернув збережений результат — запис створено один раз" : ""}.
+            ${attemptsLog.map(esc).join("; ")}</small>` : ""}`);
         loadDays();
     } catch (error) {
+        if (error instanceof UnknownOutcome) {
+            $("book-result").innerHTML = `<div class="problem-box"><b>Результат невідомий.</b> Після ${error.attempts} спроб
+                відповіді немає — запис міг створитися або ні. Повторна перевірка з тим самим ключем не створить другого запису.
+                <br><small>${attemptsLog.map(esc).join("<br>")}</small>
+                <br><button class="btn" id="retry-same-key">Перевірити ще раз (той самий ключ)</button></div>`;
+            $("retry-same-key").onclick = () => book(body.doctor_day_id, body.slots, {key, body});
+            return;
+        }
         $("book-result").innerHTML = problemHtml(error);
+        if (error.status === 409 || error.status === 404) loadDays();
     }
 }
 
@@ -334,7 +354,7 @@ async function cancelBooking(id) {
     loadAllBookings();
 }
 
-// ------------------------------------------------------------------ реєстратура
+// реєстратура
 
 async function loadRegistry() {
     if (me?.role !== "staff") return;
@@ -363,7 +383,7 @@ async function closeDay(id) {
     loadRegistry();
 }
 
-// ------------------------------------------------------------------ старт
+// старт
 
 pingApi();
 setInterval(pingApi, 5000);

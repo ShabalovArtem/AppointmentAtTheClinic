@@ -20,6 +20,9 @@ x-server: &server
     HOLD_MINUTES: ${HOLD_MINUTES:-15}
     SESSION_HOURS: ${SESSION_HOURS:-12}
     USER_HEADER: ${USER_HEADER:-on}
+    IDEMPOTENCY_TTL_HOURS: ${IDEMPOTENCY_TTL_HOURS:-24}
+    IDEMPOTENCY_WAIT_MS: ${IDEMPOTENCY_WAIT_MS:-200}
+    INVARIANT_GAP_MS: ${INVARIANT_GAP_MS:-0}
     POOL_SIZE: ${POOL_SIZE:-10}
     RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-120}
     JWT_REVOCATION: ${JWT_REVOCATION:-on}
@@ -27,6 +30,8 @@ x-server: &server
   depends_on:
     migrate:
       condition: service_completed_successfully
+    redis:
+      condition: service_started  # D2.1: rate limit shared by the instances
   restart: unless-stopped
   stop_grace_period: 30s
   volumes:

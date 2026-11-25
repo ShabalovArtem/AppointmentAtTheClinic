@@ -6,6 +6,9 @@ web:
   items:
     - О1.5   # список із курсором
     - О1.6   # система, /health, журнал JSON
+    - О2.3   # повтор після втраченої відповіді (after_commit_before_response)
+    - О2.4   # повторні спроби в клієнті з тим самим ключем
+    - Д2.1   # ліміт частоти змінювальних запитів (rate_limit нижче)
     - Д2.4   # умовна зміна з If-Match (PATCH /v1/bookings/{id})
     - Д2.5   # повторне скасування не повертає слоти вдруге
   # Користувачі для засобу: --user reader=patient1:patient-pass --user reader2=patient2:patient-pass
@@ -36,6 +39,7 @@ web:
     status: status
     duration: duration_ms
   simulator_down: "/admin/unavailable?seconds={seconds}"
+  rate_limit: 120   # Д2.1: змінювальних запитів на хвилину на користувача (RATE_LIMIT_PER_MIN)
 
 dpc:
   openapi: DPC/openapi.yaml

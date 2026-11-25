@@ -1,0 +1,144 @@
+{
+  "doctor_day": "web-compare",
+  "slots_total": 50,
+  "patients": 100,
+  "rounds": 5,
+  "modes": {
+    "protected": {
+      "rounds": [
+        {
+          "wall_ms": 311.9,
+          "p50_ms": 223.7,
+          "p95_ms": 293.4,
+          "statuses": {
+            "201": 50,
+            "409": 50
+          },
+          "slots_taken": 50,
+          "booked": 50,
+          "invariant_ok": true
+        },
+        {
+          "wall_ms": 314.3,
+          "p50_ms": 230.2,
+          "p95_ms": 291.8,
+          "statuses": {
+            "201": 50,
+            "409": 50
+          },
+          "slots_taken": 50,
+          "booked": 50,
+          "invariant_ok": true
+        },
+        {
+          "wall_ms": 295.4,
+          "p50_ms": 211.6,
+          "p95_ms": 278.3,
+          "statuses": {
+            "201": 50,
+            "409": 50
+          },
+          "slots_taken": 50,
+          "booked": 50,
+          "invariant_ok": true
+        },
+        {
+          "wall_ms": 285.9,
+          "p50_ms": 201.5,
+          "p95_ms": 272.9,
+          "statuses": {
+            "201": 50,
+            "409": 50
+          },
+          "slots_taken": 50,
+          "booked": 50,
+          "invariant_ok": true
+        },
+        {
+          "wall_ms": 340.4,
+          "p50_ms": 238.9,
+          "p95_ms": 326.0,
+          "statuses": {
+            "201": 50,
+            "409": 50
+          },
+          "slots_taken": 50,
+          "booked": 50,
+          "invariant_ok": true
+        }
+      ],
+      "median_wall_ms": 311.9,
+      "median_p50_ms": 223.7,
+      "median_p95_ms": 291.8,
+      "all_rounds_invariant_ok": true
+    },
+    "conditional": {
+      "rounds": [
+        {
+          "wall_ms": 384.1,
+          "p50_ms": 236.1,
+          "p95_ms": 366.1,
+          "statuses": {
+            "201": 50,
+            "409": 50
+          },
+          "slots_taken": 50,
+          "booked": 50,
+          "invariant_ok": true
+        },
+        {
+          "wall_ms": 348.5,
+          "p50_ms": 281.7,
+          "p95_ms": 335.8,
+          "statuses": {
+            "201": 50,
+            "409": 50
+          },
+          "slots_taken": 50,
+          "booked": 50,
+          "invariant_ok": true
+        },
+        {
+          "wall_ms": 308.2,
+          "p50_ms": 240.3,
+          "p95_ms": 292.8,
+          "statuses": {
+            "201": 50,
+            "409": 50
+          },
+          "slots_taken": 50,
+          "booked": 50,
+          "invariant_ok": true
+        },
+        {
+          "wall_ms": 276.2,
+          "p50_ms": 212.0,
+          "p95_ms": 261.3,
+          "statuses": {
+            "201": 50,
+            "409": 50
+          },
+          "slots_taken": 50,
+          "booked": 50,
+          "invariant_ok": true
+        },
+        {
+          "wall_ms": 270.1,
+          "p50_ms": 205.5,
+          "p95_ms": 255.5,
+          "statuses": {
+            "201": 50,
+            "409": 50
+          },
+          "slots_taken": 50,
+          "booked": 50,
+          "invariant_ok": true
+        }
+      ],
+      "median_wall_ms": 308.2,
+      "median_p50_ms": 236.1,
+      "median_p95_ms": 292.8,
+      "all_rounds_invariant_ok": true
+    }
+  }
+}

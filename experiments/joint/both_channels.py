@@ -65,7 +65,7 @@ def main() -> int:
 
     def web(user):
         barrier.wait()
-        web_status[user] = call(f"{a.web}/v1/bookings", "POST", {"doctor_day_id": DAY, "slots": 1}, {"X-User-Id": user})[0]
+        web_status[user] = call(f"{a.web}/v1/bookings", "POST", {"doctor_day_id": DAY, "slots": 1}, {"X-User-Id": user, "Idempotency-Key": f"joint-{tag}-{user}"})[0]
 
     def cc(rid, patient):
         barrier.wait()

@@ -31,6 +31,8 @@ def call(base, method, path, token=None, body=None, headers=None):
         req.add_header("Authorization", f"Bearer {token}")
     for k, v in (headers or {}).items():
         req.add_header(k, v)
+    if method == "POST" and path == "/v1/bookings" and "Idempotency-Key" not in (headers or {}):
+        req.add_header("Idempotency-Key", f"chk-{uuid.uuid4()}")  # з ЛР2 ключ обов'язковий
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             status, hdrs, raw = r.status, r.headers, r.read()

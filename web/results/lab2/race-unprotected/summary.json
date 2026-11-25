@@ -1,0 +1,167 @@
+{
+  "mode": "unprotected",
+  "gap_ms": 50,
+  "doctor_day": "web-race-unprotected",
+  "patients": 20,
+  "statuses": {
+    "201": 20
+  },
+  "by_instance": {
+    "app-a:201": 10,
+    "app-b:201": 10
+  },
+  "refusal_types": {},
+  "resource_before": {
+    "slots_total": 1,
+    "slots_taken": 0,
+    "booked": 0
+  },
+  "resource_after": {
+    "slots_total": 1,
+    "slots_taken": 1,
+    "booked": 20,
+    "invariant_ok": false
+  },
+  "requests": [
+    {
+      "patient": "p-d8c20715d54a",
+      "instance": "app-a",
+      "status": 201,
+      "type": null,
+      "ms": 94.9
+    },
+    {
+      "patient": "p-95692ff7fc7e",
+      "instance": "app-a",
+      "status": 201,
+      "type": null,
+      "ms": 98.4
+    },
+    {
+      "patient": "p-2d8d802ee8ea",
+      "instance": "app-b",
+      "status": 201,
+      "type": null,
+      "ms": 101.0
+    },
+    {
+      "patient": "p-4e3501f8f92e",
+      "instance": "app-b",
+      "status": 201,
+      "type": null,
+      "ms": 103.9
+    },
+    {
+      "patient": "p-a5f0c252fe89",
+      "instance": "app-b",
+      "status": 201,
+      "type": null,
+      "ms": 108.0
+    },
+    {
+      "patient": "p-7ca441efcf00",
+      "instance": "app-a",
+      "status": 201,
+      "type": null,
+      "ms": 110.7
+    },
+    {
+      "patient": "p-e153a0327b25",
+      "instance": "app-b",
+      "status": 201,
+      "type": null,
+      "ms": 112.1
+    },
+    {
+      "patient": "p-f2549bef26b8",
+      "instance": "app-a",
+      "status": 201,
+      "type": null,
+      "ms": 118.0
+    },
+    {
+      "patient": "p-27a0ec929ab1",
+      "instance": "app-a",
+      "status": 201,
+      "type": null,
+      "ms": 119.2
+    },
+    {
+      "patient": "p-0f810608ef7b",
+      "instance": "app-b",
+      "status": 201,
+      "type": null,
+      "ms": 122.7
+    },
+    {
+      "patient": "p-dbb9a0c2d591",
+      "instance": "app-a",
+      "status": 201,
+      "type": null,
+      "ms": 126.4
+    },
+    {
+      "patient": "p-4b844d6e2faf",
+      "instance": "app-a",
+      "status": 201,
+      "type": null,
+      "ms": 128.6
+    },
+    {
+      "patient": "p-9ac5058f8a76",
+      "instance": "app-b",
+      "status": 201,
+      "type": null,
+      "ms": 132.8
+    },
+    {
+      "patient": "p-55bd880971fb",
+      "instance": "app-a",
+      "status": 201,
+      "type": null,
+      "ms": 134.4
+    },
+    {
+      "patient": "p-91363e8accdd",
+      "instance": "app-a",
+      "status": 201,
+      "type": null,
+      "ms": 137.9
+    },
+    {
+      "patient": "p-9917a676a258",
+      "instance": "app-b",
+      "status": 201,
+      "type": null,
+      "ms": 142.6
+    },
+    {
+      "patient": "p-432686dc2fa1",
+      "instance": "app-b",
+      "status": 201,
+      "type": null,
+      "ms": 145.8
+    },
+    {
+      "patient": "p-100f1807226b",
+      "instance": "app-b",
+      "status": 201,
+      "type": null,
+      "ms": 148.4
+    },
+    {
+      "patient": "p-38f408e3b375",
+      "instance": "app-a",
+      "status": 201,
+      "type": null,
+      "ms": 149.2
+    },
+    {
+      "patient": "p-abefedd090ca",
+      "instance": "app-b",
+      "status": 201,
+      "type": null,
+      "ms": 153.7
+    }
+  ]
+}

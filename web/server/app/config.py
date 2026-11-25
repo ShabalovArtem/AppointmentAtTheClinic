@@ -32,10 +32,16 @@ OTEL_ENABLED = os.environ.get("OTEL_ENABLED", "off") == "on"
 OTEL_ENDPOINT = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
 
 # experiment modes: what each value changes is yours to write
-INVARIANT_MODE = os.environ.get("INVARIANT_MODE", "protected")
+INVARIANT_MODE = os.environ.get("INVARIANT_MODE", "protected")  # protected | conditional | unprotected
 HOLD_MINUTES = _int("HOLD_MINUTES", 15)  # C02: how long a web booking stays held
 SESSION_HOURS = _int("SESSION_HOURS", 12)  # lifetime of a login token
 USER_HEADER = os.environ.get("USER_HEADER", "on") == "on"  # X-User-Id without a token (labs 1-2)
+# lab 2: idempotency keys (O2.2) and the invariant modes (O2.1, D2.2)
+IDEMPOTENCY_TTL_HOURS = _int("IDEMPOTENCY_TTL_HOURS", 24)
+IDEMPOTENCY_WAIT_MS = _int("IDEMPOTENCY_WAIT_MS", 200)  # a duplicate waits this long, then 409
+IDEMPOTENCY_CLEANUP_S = _int("IDEMPOTENCY_CLEANUP_S", 60)
+IDEMPOTENCY_CLEANUP_BATCH = _int("IDEMPOTENCY_CLEANUP_BATCH", 500)
+INVARIANT_GAP_MS = _int("INVARIANT_GAP_MS", 0)  # pause between read and write in INVARIANT_MODE=unprotected
 RATE_LIMIT_PER_MIN = _int("RATE_LIMIT_PER_MIN", 120)
 JWT_REVOCATION = os.environ.get("JWT_REVOCATION", "on") == "on"
 

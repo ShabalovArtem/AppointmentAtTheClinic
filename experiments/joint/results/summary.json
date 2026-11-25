@@ -10,15 +10,14 @@
     "202": 20
   },
   "call_center_final": {
-    "rejected:patient-already-booked": 1,
-    "rejected:no-free-slots": 14,
+    "rejected:no-free-slots": 15,
     "done:": 5
   },
   "p-1001": {
     "web": 201,
-    "call_center": "rejected:patient-already-booked"
+    "call_center": "rejected:no-free-slots"
   },
-  "seconds": 3.11,
+  "seconds": 3.12,
   "resource_after": {
     "id": "dd-joint",
     "doctor_id": "doc-4",

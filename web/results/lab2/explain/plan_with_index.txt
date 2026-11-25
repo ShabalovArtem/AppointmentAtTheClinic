@@ -1,0 +1,29 @@
+Limit  (cost=0.73..90.42 rows=21 width=240) (actual time=0.044..0.135 rows=21 loops=1)
+  Buffers: shared hit=25 read=3
+  ->  Nested Loop  (cost=0.73..363.75 rows=85 width=240) (actual time=0.043..0.132 rows=21 loops=1)
+        Buffers: shared hit=25 read=3
+        ->  Nested Loop  (cost=0.57..346.62 rows=85 width=150) (actual time=0.036..0.120 rows=21 loops=1)
+              Buffers: shared hit=23 read=3
+              ->  Index Scan using booking_patient_newest on booking b  (cost=0.42..337.77 rows=85 width=116) (actual time=0.025..0.100 rows=21 loops=1)
+                    Index Cond: (patient_id = 'gen-0042'::text)
+                    Buffers: shared hit=21 read=3
+              ->  Memoize  (cost=0.15..0.54 rows=1 width=46) (actual time=0.001..0.001 rows=1 loops=21)
+                    Cache Key: b.doctor_day_id
+                    Cache Mode: logical
+                    Hits: 20  Misses: 1  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+                    Buffers: shared hit=2
+                    ->  Index Scan using doctor_day_pkey on doctor_day d  (cost=0.14..0.53 rows=1 width=46) (actual time=0.005..0.005 rows=1 loops=1)
+                          Index Cond: (id = b.doctor_day_id)
+                          Buffers: shared hit=2
+        ->  Memoize  (cost=0.16..1.18 rows=1 width=96) (actual time=0.000..0.000 rows=1 loops=21)
+              Cache Key: d.doctor_id
+              Cache Mode: logical
+              Hits: 20  Misses: 1  Evictions: 0  Overflows: 0  Memory Usage: 1kB
+              Buffers: shared hit=2
+              ->  Index Scan using doctor_pkey on doctor doc  (cost=0.15..1.17 rows=1 width=96) (actual time=0.005..0.005 rows=1 loops=1)
+                    Index Cond: (id = d.doctor_id)
+                    Buffers: shared hit=2
+Planning:
+  Buffers: shared hit=301 read=1
+Planning Time: 0.675 ms
+Execution Time: 0.189 ms

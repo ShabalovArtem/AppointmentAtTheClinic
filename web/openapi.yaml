@@ -320,6 +320,9 @@ paths:
         В одній транзакції: спільне з кол-центром DPC правило `take_slots()` (день існує, не закритий,
         вистачає слотів; рядок дня заблоковано) і запис бронювання. 201 надсилається після фіксації.
         У пацієнта не більше одного активного запису до лікаря на день — інакше 409.
+        Ключ ідемпотентності й збережена відповідь записуються в тій самій транзакції; відмови за
+        правилом (404, 409) теж зберігаються й повторюються. Спосіб захисту інваріанта — INVARIANT_MODE
+        (protected — блокування рядка, conditional — атомарний умовний UPDATE).
       x-course: main
       parameters:
         - $ref: "#/components/parameters/IdempotencyKey"
@@ -356,6 +359,10 @@ paths:
                 type: string
               description: "/v1/bookings/{id}"
             ETag:
+              schema:
+                type: string
+            Idempotent-Replayed:
+              description: true — це збережена відповідь попередньої спроби з тим самим ключем
               schema:
                 type: string
           content:
@@ -741,8 +748,11 @@ components:
     IdempotencyKey:
       name: Idempotency-Key
       in: header
-      required: false
-      description: Ключ ідемпотентності (механізм — ЛР2). Повтор із тим самим ключем повертає збережений результат
+      required: true
+      description: |
+        Ключ ідемпотентності (обов'язковий; немає — 400). Повтор із тим самим ключем і тілом повертає
+        збережену відповідь (заголовок Idempotent-Replayed: true); той самий ключ з іншим тілом — 422;
+        ключ ще обробляється — 409 з Retry-After. Ключ діє для користувача й операції 24 год.
       schema:
         type: string
         minLength: 8
@@ -1049,7 +1059,10 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
     Conflict:
-      description: Конфлікт із поточним станом (ресурсу немає, ключ ще обробляється)
+      description: Конфлікт із поточним станом (немає слотів, день закрито, уже є запис) або ключ ще обробляється (тоді з Retry-After)
+      headers:
+        Retry-After:
+          $ref: "#/components/headers/RetryAfter"
       content:
         application/problem+json:
           schema:
@@ -1079,7 +1092,7 @@ components:
           schema:
             $ref: "#/components/schemas/Problem"
     TooManyRequests:
-      description: Забагато запитів
+      description: Забагато змінювальних запитів (ліміт на користувача, спільний для екземплярів)
       headers:
         Retry-After:
           $ref: "#/components/headers/RetryAfter"

@@ -1,0 +1,20 @@
+{
+  "first_app_a": {
+    "status": 201,
+    "id": "bk-1261cca63531479a9a19",
+    "seconds": 0.627
+  },
+  "duplicate_while_processing_app_b": {
+    "status": 409,
+    "type": "https://example.edu/problems/idempotency-key-in-progress",
+    "retry_after": "1",
+    "seconds": 0.07
+  },
+  "repeat_after_commit_app_b": {
+    "status": 201,
+    "id": "bk-1261cca63531479a9a19",
+    "replayed": "true"
+  },
+  "bookings_of_patient": 1,
+  "ok": true
+}

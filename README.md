@@ -2,7 +2,7 @@
 
 > Опис реалізованого проєкту за шаблонами [web/README-template.md](web/README-template.md) і
 > [DPC/README-template.md](DPC/README-template.md). Описи наданих каркасів - [web/README-kit.md](web/README-kit.md),
-> [DPC/README-kit.md](DPC/README-kit.md). Поточний стан: **виконано ЛР1 обох курсів**, ЛР2-ЛР6 - у роботі.
+> [DPC/README-kit.md](DPC/README-kit.md). Поточний стан: **виконано ЛР1 обох курсів і ЛР2 Web**, решта - у роботі.
 
 ## 1. Курс і тема
 
@@ -114,15 +114,16 @@ flowchart LR
 | Шлях | Призначення |
 |---|---|
 | `compose.yaml` | спільний запуск: `include` частин Web і DPC, одна база й один `migrate` |
-| `migrations/` | **спільна** схема й демодані: `001_clinic.sql` (таблиці, обмеження, `take_slots()`), `900_clinic_seed.sql` |
+| `migrations/` | **спільна** схема й демодані: `001_clinic.sql` (таблиці, обмеження, `take_slots()`), `002_auth_cancel.sql` (сесії, скасування), `003_idempotency.sql` (ключі ідемпотентності), `900_clinic_seed.sql`, `901_web_lab2_seed.sql` (тестові дні дослідів ЛР2) |
 | `checks.yaml` | налаштування засобу перевірки для обох курсів і наскрізний сценарій |
 | `experiments/joint/` | дослід «Два канали на один день» (`both_channels.py`, `reset.sql`) і результати |
 | `web/server/app/clinic.py` | **Web ЛР1**: каталог, головна операція, список із курсором, поточний користувач `X-User-Id` |
-| `web/server/app/main.py` | підключення маршрутів і CORS для клієнта |
+| `web/server/app/idempotency.py`, `ratelimit.py` | **Web ЛР2**: ключі ідемпотентності (займання, збережена відповідь, прибирання порціями); спільний ліміт частоти в Redis |
+| `web/server/app/main.py` | підключення маршрутів, CORS, фонове прибирання прострочених ключів |
 | `web/server/app/{middleware,jsonlog,problems,service,db,config}.py` | каркас: `X-Request-ID`, журнал JSON, Problem Details, `/health`, пул БД, налаштування |
 | `web/openapi.yaml` | контракт Web (перевірено Redocly) |
 | `web/client/` | сайт пацієнта: `index.html`, `app.js`, `api.js`, `styles.css` |
-| `web/experiments/` | `lab1_check.py` - перевірка ЛР1 Web, `reset_web.sql`; результати в `web/results/lab1/` |
+| `web/experiments/` | `lab1_check.py` - перевірка ЛР1 Web, `card_routes_check.py`, `reset_web.sql`; `lab2/` - досліди ЛР2 (`race.py`, `idempotency_check.py`, `in_progress.py`, `lost_response.py`, `client_retry.py`, `compare.py`, `explain.py`); результати в `web/results/` |
 | `web/compose.yaml`, `web/configs/` | сервіси Web (nginx, app-a/b, postgres, migrate, Kafka, симулятор, шлюзи…) |
 | `DPC/api/app/booking.py` | **DPC ЛР1**: черга, пул обробників, повільний виклик, критична секція (два режими), метрики й час |
 | `DPC/compose.services.yaml`, `DPC/compose.infra.yaml`, `DPC/compose.yaml` | сервіси DPC; інфраструктура для окремого запуску DPC; окремий запуск |
@@ -180,6 +181,8 @@ python -m http.server 8083 --bind 127.0.0.1 --directory DPC/client
 | PostgreSQL (`app`/`app`, база `app`) | localhost:5432 |
 
 Параметри (типові значення - у `web/.env.example`, `DPC/.env.example`): `HOLD_MINUTES=15` (утримання запису сайту);
+Web ЛР2 - `INVARIANT_MODE=protected|conditional|unprotected`, `INVARIANT_GAP_MS=0`, `IDEMPOTENCY_TTL_HOURS=24`,
+`IDEMPOTENCY_WAIT_MS=200`, `RATE_LIMIT_PER_MIN=120` (Redis запускається разом з app-a/app-b);
 DPC - `QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected`, `SLOW_MIN_MS=200`, `SLOW_MAX_MS=800`,
 `CS_GAP_MS=0`, `RETRY_AFTER_S=1`. Зміна режиму DPC: `RESOURCE_MODE=unprotected CS_GAP_MS=50 docker compose up -d api`
 (PowerShell: `$env:RESOURCE_MODE='unprotected'; $env:CS_GAP_MS='50'; docker compose up -d api`; повернення -
@@ -205,6 +208,46 @@ DPC - `QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected`, `SLO
 Перевірка одним запуском (із кореня, стек запущено): `python web/experiments/lab1_check.py` - 23/23 OK,
 свідчення - [web/results/lab1/summary.json](web/results/lab1/summary.json). Повторний запуск - після
 `docker compose exec -T postgres psql -U app -d app < web/experiments/reset_web.sql`.
+
+### Web ЛР2. Конкуренція та повторення запитів
+
+| Пункт | Де реалізовано | Перевірка та свідчення |
+|---|---|---|
+| О2.1 Ядро. Інваріант за одночасних запитів | `_take_slots()` у [web/server/app/clinic.py](web/server/app/clinic.py), робочий режим `INVARIANT_MODE=protected`: функція бази `take_slots()` блокує рядок `doctor_day` (`SELECT … FOR UPDATE`) і в тій самій транзакції перевіряє правило та змінює `slots_taken`. Альтернатива для порівняння — `conditional` (атомарний умовний `UPDATE … WHERE slots_taken + n <= slots_total`) | Дослід «20 пацієнтів на останній слот» через **обидва екземпляри** (по 10 напряму на app-a і app-b): `protected` — 1 × 201, 19 × 409, `slots_taken = booked = 1`, `invariant_ok=true`; `conditional` — так само. На окремому тестовому дні в режимі `unprotected` (читання → пауза 50 мс → запис) — 20 × 201 на 1 слот, `invariant_ok=false` |
+| О2.2 Ядро. Механізм ідемпотентності | [web/server/app/idempotency.py](web/server/app/idempotency.py), таблиця `idempotency_key` ([migrations/003_idempotency.sql](migrations/003_idempotency.sql)): користувач, операція, ключ, відбиток тіла (SHA-256 канонічного JSON), стан, статус, тіло й заголовки відповіді, строк 24 год. Ключ займається `INSERT … ON CONFLICT` у **тій самій транзакції**, що й запис пацієнта, і там же отримує збережену відповідь — фіксуються разом. Дублікат під час обробки чекає на унікальному індексі не довше `IDEMPOTENCY_WAIT_MS` (200 мс), інакше 409 з `Retry-After`. Прострочені ключі прибирає фонова задача кожного екземпляра порціями по 500 (`FOR UPDATE SKIP LOCKED`) | `idempotency_check.py` **10/10 OK**: без ключа — 400; повтор через інший екземпляр (поля в іншому порядку) — той самий 201, той самий `id`, `Idempotent-Replayed: true`; інше тіло — 422; той самий ключ іншого користувача — окрема операція; збережена відмова 409 повторюється; 12 одночасних дублікатів через обидва екземпляри — 1 запис, усі 12 відповідей з тим самим `id`; 1 200 прострочених ключів прибрано порціями. `in_progress.py`: дублікат під час довгої транзакції — 409 `idempotency-key-in-progress` з `Retry-After: 1`, після фіксації — збережений 201 |
+| О2.3 Повтор після втраченої відповіді | `fault("after_commit_before_response")` у `create_booking` — одразу після COMMIT, до відповіді | `lost_response.py`: запит на app-a — транзакцію зафіксовано, процес упав (у журналі `fault.hit`), клієнт без відповіді; той самий ключ через app-b — 201 зі збереженим `id`; після перезапуску app-a — те саме; запис пацієнта один, `slots_taken` зріс на 2 рівно один раз |
+| О2.4 Повторні спроби в клієнті | `callWithRetry()` у [web/client/api.js](web/client/api.js), `book()` у [web/client/app.js](web/client/app.js): один ключ на дію користувача, той самий у всіх спробах; повтор при обриві, 429, 502–504 і 409 «ключ обробляється»; пауза `random(0, min(4 с, 0,3 с·2^(n−1)))`, не менша за `Retry-After`; ≤ 5 спроб і ≤ 15 с; інакше «Результат невідомий» із кнопкою перевірки тим самим ключем | `client_retry.py` у реальному браузері (Edge): втрачена відповідь → «Спроба 2; сервер повернув збережений результат — запис створено один раз», у базі 1 запис; app-a і app-b зупинено → після 5 спроб «Результат невідомий», записів 0; після запуску «Перевірити ще раз (той самий ключ)» → 201, записів 1 |
+| Д2.1 Ліміт частоти | [web/server/app/ratelimit.py](web/server/app/ratelimit.py): лічильник `rl:<user>:<хвилина>` у Redis, спільний для екземплярів; понад `RATE_LIMIT_PER_MIN=120` змінювальних запитів — 429 з `Retry-After` до кінця хвилини | 130 запитів одного користувача навперемінно на app-a і app-b: 120 пропущено, 10 × 429 (по 5 на кожному екземплярі), `Retry-After` присутній |
+| Д2.2 Порівняння двох способів | `INVARIANT_MODE=protected` (блокування рядка) і `conditional` (атомарний умовний запис) | `compare.py`: 100 пацієнтів на 50 слотів через nginx, 5 раундів на режим — обидва: 50 × 201, 50 × 409, інваріант виконано. Медіани: тривалість раунду 312 мс проти 308 мс, p95 відповіді 292 мс проти 293 мс — різниця в межах шуму |
+| Д2.3 Другий інваріант | частковий унікальний індекс `booking_one_active_per_patient_day` (з ЛР1) | другий активний запис до лікаря на день — 409 `already-booked` |
+| Д2.4 Умовна зміна | `PATCH /v1/bookings/{id}`: `If-Match` = ETag, перевірка версії й запис — один `UPDATE … WHERE version = %s` | `card_routes_check.py`: без заголовка — 428, застаріла версія — 412, поточна — 200 і нова версія |
+| Д2.5 Повторне скасування | `POST /v1/bookings/{id}/cancel`: рядок блокується, `release_slots()` лише при переході `held/confirmed → cancelled` | повторне скасування — той самий стан, вільних слотів не додається |
+| Д2.7 План запиту | `explain.py`: 100 000 записів, `EXPLAIN (ANALYZE, BUFFERS)` запиту списку до й після індексу `booking_patient_newest (patient_id, created_at DESC, id DESC)` | без індексу — `Seq Scan` 100 450 рядків + `top-N heapsort`, 1 560 буферів, **8,0 мс**; з індексом — `Index Scan` у потрібному порядку, зупиняється на 21-му рядку, без сортування, 28 буферів, **0,19 мс**. Послідовне сканування не вимикалось. Плани — `web/results/lab2/explain/` |
+
+**Чому блокування рядка (О2.1).** Перевірка й зміна спільного ресурсу виконуються в базі, тож захист діє між
+`app-a` і `app-b` та між сайтом і кол-центром DPC (локальний м'ютекс одного екземпляра цього не дав би).
+Блокування рядка обрано як робочий режим, бо в одній функції бази `take_slots()` воно поєднує всі перевірки
+правила (день існує, не закритий, вистачає слотів) і однаково викликається обома частинами проєкту. Атомарний
+умовний `UPDATE` (`conditional`) захищає так само (дослід Д2.2), але причину відмови доводиться з'ясовувати
+окремим читанням. Серіалізовна транзакція потребувала б повторів у разі конфлікту — без потреби, бо конфлікт
+стосується одного рядка.
+
+Повний набір перевірок ЛР2 (із кореня, стек запущено; скрипти самі перезапускають app-a/app-b з потрібним режимом):
+
+```bash
+python web/experiments/lab2/race.py --mode protected
+```
+
+```bash
+python web/experiments/lab2/idempotency_check.py
+```
+
+```bash
+python web/experiments/lab2/lost_response.py
+```
+
+`race.py --mode conditional|unprotected --gap-ms 50`, `in_progress.py`, `compare.py --rounds 5`, `explain.py`,
+`client_retry.py` (потрібні `pip install playwright` і клієнт на :8081) — решта дослідів. Результати — `web/results/lab2/`.
 
 ### DPC ЛР1. Сервіс із чергою та модель виконання
 
@@ -236,7 +279,7 @@ DPC - `QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected`, `SLO
 
 | Курс | ЛР | Стан |
 |---|---|---|
-| Web | ЛР2 конкуренція й повторення (Idempotency-Key, If-Match, скасування) | у роботі; маршрути вже описано в контракті |
+| Web | ЛР2 конкуренція й повторення | **виконано**: О2.1–О2.4, Д2.1–Д2.5, Д2.7 (розділ вище) |
 | Web | ЛР3 вхід і доступ; ЛР4 страхова, outbox, Kafka; ЛР5 WebSocket; ЛР6 типи прийому | заплановано |
 | DPC | ЛР2 паралельне інтегрування Q(t) | у роботі; вкладка в клієнті кол-центру готова |
 | DPC | ЛР3 Ray; ЛР4 Spark; ЛР5 потік `arrivals`; ЛР6 координатори | заплановано |
@@ -248,6 +291,13 @@ DPC - `QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected`, `SLO
 | Дослід | Режим і команда (з кореня) | Що видно / результат |
 |---|---|---|
 | Перевірка Web ЛР1 | `python web/experiments/lab1_check.py` | 23/23 OK - [web/results/lab1/summary.json](web/results/lab1/summary.json) |
+| Останній слот (Web О2.1) | `python web/experiments/lab2/race.py --mode protected` (і `conditional`) | 20 пацієнтів через app-a і app-b на 1 слот: 1 × 201, 19 × 409, інваріант виконано - `web/results/lab2/race-*/` |
+| Останній слот без захисту (Web О2.1) | `python web/experiments/lab2/race.py --mode unprotected --gap-ms 50` | 20 × 201 на 1 слот, `invariant_ok=false` (тестовий день `web-race-unprotected`) |
+| Ідемпотентність і ліміт (Web О2.2, Д2.1) | `python web/experiments/lab2/idempotency_check.py`; `in_progress.py` | 10/10 OK; 409 «ключ обробляється» з `Retry-After` - `web/results/lab2/idempotency/`, `in-progress/` |
+| Втрачена відповідь (Web О2.3) | `python web/experiments/lab2/lost_response.py` | обрив після COMMIT, повтор через app-b - той самий 201, запис один - `web/results/lab2/lost-response/` |
+| Повтори в клієнті (Web О2.4) | `python web/experiments/lab2/client_retry.py` | браузер: спроба 2 → збережений результат; сервер недоступний → «Результат невідомий» → після запуску 201, запис один - `web/results/lab2/client-retry/` (зі знімками) |
+| Два способи захисту (Web Д2.2) | `python web/experiments/lab2/compare.py --rounds 5` | 100 → 50 слотів: блокування рядка 312 мс / p95 292 мс, умовний запис 308 мс / p95 293 мс - `web/results/lab2/compare/` |
+| План запиту (Web Д2.7) | `python web/experiments/lab2/explain.py` | 10⁵ записів: `Seq Scan` 8,0 мс → `Index Scan` 0,19 мс - `web/results/lab2/explain/` |
 | **Два канали на один день** (спільний) | скидання `experiments/joint/reset.sql`, потім `python experiments/joint/both_channels.py` | 5 записів сайту + 20 запитів кол-центру на 10 слотів: зайнято рівно 10, `invariant_ok=true` - [experiments/joint/results/summary.json](experiments/joint/results/summary.json) |
 | Заповнена черга (DPC О1.2, О1.3, О1.5) | `RESOURCE_MODE=locked`; `python DPC/experiments/lab1/queue_full.py --clients 16 --seconds 30 --out DPC/results/lab1/queue-full` | черга ≤ 50, 429 з `Retry-After`, p95 `/health` 3,8 мс - `DPC/results/lab1/queue-full/` |
 | Гонка за слоти, із захистом (DPC О1.4) | `RESOURCE_MODE=locked CS_GAP_MS=50`; скидання, `python DPC/experiments/lab1/race.py --doctor-day race-locked --out DPC/results/lab1/race-locked` | 20 / 20, `invariant_ok=true` |
@@ -256,6 +306,15 @@ DPC - `QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected`, `SLO
 
 Скидання тестових ресурсів DPC перед кожним `race.py`: `docker compose exec -T postgres psql -U app -d app < DPC/experiments/lab1/reset.sql`
 (PowerShell: `Get-Content DPC/experiments/lab1/reset.sql | docker compose exec -T postgres psql -U app -d app`).
+
+#### Втрачена відповідь (Web О2.3)
+
+| Поле | Зміст |
+|---|---|
+| Твердження | Якщо процес упав після фіксації, але до відповіді, повтор із тим самим ключем через інший екземпляр повертає збережений результат, а предметна зміна виконана один раз |
+| Відтворення | `docker compose exec app-a touch /faults/after_commit_before_response` (робить скрипт); новий пацієнт `POST /v1/bookings` (2 слоти дня `web-retry`) з ключем K напряму на app-a; той самий запит із K на app-b; після перезапуску app-a - ще раз на app-a |
+| Вимірювання | спроба 1 - з'єднання обірвано (статус 0), у журналі app-a `fault.hit`, у базі вже 1 запис і `slots_taken = 2`; спроба 2 (app-b) - 201, той самий `id`, `Idempotent-Replayed: true`; спроба 3 (app-a після перезапуску) - те саме; записів пацієнта - 1, `slots_taken` зріс на 2 один раз |
+| Відновлення стану | файл відмови прибирається під час спрацювання (одна відмова на один файл); Docker перезапускає app-a (`restart: unless-stopped`); тестовий день скидає скрипт (`reset_day`) або `web/experiments/reset_web.sql` |
 
 #### Два канали на один день (спільний дослід)
 
@@ -305,24 +364,29 @@ DPC - `QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected`, `SLO
 
 ## 8. Межі гарантій і керовані відмови
 
-- **Web ЛР1** перевірено функціонально (23 перевірки) на одній машині. Одночасні запити на останній слот (`dd-one`,
-  5 пацієнтів) дали один успіх, але повний дослід О2.1 (20+ одночасних запитів через обидва екземпляри, режим без
-  захисту) - це ЛР2. `Idempotency-Key` описано в контракті, механізм - ЛР2. Утримання `held` поки не спливає
-  автоматично (`expires_at` записується; перехід `expired` і звільнення слотів - ЛР2/ЛР4).
+- **Web ЛР1** перевірено функціонально (23 перевірки) на одній машині. Утримання `held` поки не спливає
+  автоматично (`expires_at` записується; перехід `expired` і звільнення слотів - ЛР4).
+- **Web ЛР2.** Інваріант перевірено для 20 одночасних запитів на 1 слот і 100 запитів на 50 слотів через обидва
+  екземпляри на одній машині; збереження ключів - разом із записом у PostgreSQL, тож гарантія ідемпотентності
+  тримається, поки існує рядок ключа (24 год). Повтор після 24 год виконає операцію знову. Ідемпотентність
+  стосується головної операції `POST /v1/bookings`; зміна причини захищена `If-Match`, скасування - станом.
+  Ліміт частоти (Redis) у разі недоступності Redis не діє (fail-open), бо не є умовою правильності.
+- Керована відмова `after_commit_before_response` (Web О2.3): місце - після COMMIT у `create_booking`; увімкнення -
+  `docker compose exec app-a touch /faults/after_commit_before_response`; журнал - `fault.hit`; файл забирається
+  при спрацюванні, Docker перезапускає процес.
 - До ЛР3 користувача визначає заголовок `X-User-Id` без пароля - це навчальне припущення методички, не захист.
 - **Спільний дослід** показав узгодженість каналів за одного запуску з 25 одночасними запитами; він не охоплює
   відмов бази чи мережі між частинами.
 - **DPC:** черга живе в пам'яті процесу; після аварії процесу запити `queued`/`processing` лишаються незавершеними
   (О1.1 цього не вимагає). Дослід черги - 16 клієнтів, 30 с, один процес `api`. Режим `unprotected` - лише на
   `race-unprotected`, після досліду - `reset.sql`.
-- Керовані відмови `FAULTS` у ЛР1 обох курсів не використовуються (`after_commit_before_response` - Web ЛР2,
-  `after_effect_before_ack` - DPC ЛР3).
+- Керовані відмови `FAULTS` у DPC ЛР1 не використовуються (`after_effect_before_ack` - DPC ЛР3).
 
 ## 9. Внесок учасників
 
 | Учасник | Реалізовані пункти й виконані досліди |
 |---|---|
-| Шабалов | Web ЛР1 (О1.1-О1.7), DPC ЛР1 (О1.1-О1.5), спільна схема й дослід «Два канали» |
+| Шабалов | Web ЛР1 , Web ЛР2 , DPC ЛР1  |
 
 ### Використані бібліотеки
 
@@ -336,6 +400,8 @@ DPC - `QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected`, `SLO
 | PostgreSQL 17 + pgcrypto | спільний ресурс, обмеження, функція правила, bcrypt-хеші паролів демоданих | `migrations/` |
 | nginx | балансування `least_conn` між `app-a` і `app-b` | `web/configs/nginx/` |
 | `asyncio` | обмежена черга й обробники DPC | `DPC/api/app/booking.py` |
+| Redis 8 (`redis.asyncio`) | спільний для екземплярів лічильник ліміту частоти (Д2.1) | `web/server/app/ratelimit.py` |
+| Playwright + Microsoft Edge | перевірка повторів у реальному браузері (О2.4) | `web/experiments/lab2/client_retry.py` |
 | Redocly CLI 1.34.5 | лінтер контракту Web (О1.3) | `npx @redocly/cli@1.34.5 lint web/openapi.yaml` |
 | стандартна бібліотека Python (`urllib`, `http.client`, `threading`) | скрипти перевірок і дослідів | `web/experiments/`, `DPC/experiments/`, `experiments/joint/` |
 | Каркаси курсів | службові маршрути, журнал, Problem Details, Compose, міграції | `web/server/app/*`, `DPC/api/app/*`, `*/configs/` |

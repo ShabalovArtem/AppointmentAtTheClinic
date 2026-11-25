@@ -20,11 +20,15 @@ from datetime import datetime
 from typing import Annotated, Any
 
 import psycopg
+import asyncio
+
 from fastapi import APIRouter, Header, Query, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import config, db
+from . import config, db, idempotency, ratelimit
 from .auth import Staff, User
+from .faults import fault
 from .jsonlog import log
 from .problems import Problem
 
@@ -60,7 +64,7 @@ async def list_doctor_days(doctor_id: str) -> dict[str, Any]:
         rows = await (
             await conn.execute(
                 """SELECT id, day, clinic_tz, slots_total, slots_taken, price_minor, currency
-                   FROM doctor_day WHERE doctor_id = %s AND NOT closed AND NOT unprotected_test
+                   FROM doctor_day WHERE doctor_id = %s AND NOT closed AND NOT unprotected_test AND NOT experiment
                    ORDER BY day, id""",
                 (doctor_id,),
             )
@@ -132,38 +136,116 @@ _REFUSALS = {
 }
 
 
+def _problem_body(status: int, slug: str, title: str, detail: str | None = None) -> dict[str, Any]:
+    body: dict[str, Any] = {"type": config.PROBLEM_BASE + slug, "title": title, "status": status}
+    if detail:
+        body["detail"] = detail
+    body["instance"] = "/v1/bookings"
+    return body
+
+
+async def _take_slots(conn: psycopg.AsyncConnection, day_id: str, slots: int) -> str | None:
+    """Перевірка правила й зміна ресурсу; повертає причину відмови або None.
+
+    INVARIANT_MODE (О2.1, Д2.2):
+      protected   — функція бази take_slots(): блокування рядка doctor_day (SELECT ... FOR UPDATE),
+                    перевірка й UPDATE під блокуванням (спільне правило з кол-центром DPC);
+      conditional — атомарний умовний запис: один UPDATE ... WHERE slots_taken + n <= slots_total;
+      unprotected — навмисно хибно: читання, пауза INVARIANT_GAP_MS, запис абсолютного значення.
+                    Лише для тестових днів з unprotected_test; для інших — як protected.
+    """
+    mode = config.INVARIANT_MODE
+    if mode == "conditional":
+        hit = await (
+            await conn.execute(
+                """UPDATE doctor_day SET slots_taken = slots_taken + %s
+                   WHERE id = %s AND NOT closed AND slots_taken + %s <= slots_total RETURNING id""",
+                (slots, day_id, slots),
+            )
+        ).fetchone()
+        if hit is not None:
+            return None
+        day = await (await conn.execute("SELECT closed FROM doctor_day WHERE id = %s", (day_id,))).fetchone()
+        return "doctor-day-not-found" if day is None else "day-closed" if day["closed"] else "no-free-slots"
+    if mode == "unprotected":
+        day = await (
+            await conn.execute(
+                "SELECT slots_total, slots_taken, closed, unprotected_test FROM doctor_day WHERE id = %s", (day_id,)
+            )
+        ).fetchone()
+        if day is not None and day["unprotected_test"]:
+            if day["closed"]:
+                return "day-closed"
+            if day["slots_taken"] + slots > day["slots_total"]:
+                return "no-free-slots"
+            if config.INVARIANT_GAP_MS:
+                await asyncio.sleep(config.INVARIANT_GAP_MS / 1000)
+            await conn.execute("UPDATE doctor_day SET slots_taken = %s WHERE id = %s",
+                               (day["slots_taken"] + slots, day_id))
+            return None
+    row = await (await conn.execute("SELECT take_slots(%s, %s) AS reason", (day_id, slots))).fetchone()
+    return row["reason"]
+
+
 @router.post("/bookings", status_code=201)
-async def create_booking(body: BookingCreate, user: User, response: Response) -> dict[str, Any]:
+async def create_booking(
+    body: BookingCreate,
+    user: User,
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> JSONResponse:
+    """Головна операція. В ОДНІЙ транзакції: зайняти ключ ідемпотентності -> перевірити й змінити
+    ресурс -> записати бронювання -> зберегти відповідь у ключі. 201 надсилається після COMMIT."""
+    key = idempotency.require_key(idempotency_key)
+    await ratelimit.check(user)
+    request_hash = idempotency.fingerprint(body.model_dump())
     booking_id = f"bk-{uuid.uuid4().hex[:20]}"
+    replay = None
     try:
         async with db.connection() as conn, conn.transaction():
-            reason = (
-                await (
-                    await conn.execute("SELECT take_slots(%s, %s) AS reason", (body.doctor_day_id, body.slots))
-                ).fetchone()
-            )["reason"]
+            replay = await idempotency.claim(conn, user["id"], idempotency.CREATE_BOOKING, key, request_hash)
+            if replay is None:
+                status, payload, headers = await _create(conn, body, user, booking_id)
+                await idempotency.finish(conn, user["id"], idempotency.CREATE_BOOKING, key, status, payload, headers)
+        # тут транзакцію (ключ + запис пацієнта + збережена відповідь) уже зафіксовано
+    except idempotency.LockTimeout:
+        raise idempotency.in_progress() from None
+
+    if replay is not None:
+        log("booking.replayed", status=replay["response_status"])
+        return JSONResponse(replay["response_body"], status_code=replay["response_status"],
+                            headers={**replay["response_headers"], "Idempotent-Replayed": "true"},
+                            media_type="application/json" if replay["response_status"] < 400 else "application/problem+json")
+
+    fault("after_commit_before_response")  # О2.3: зміну зафіксовано, а відповідь клієнт не отримає
+    if status == 201:
+        log("booking.created", booking_id=booking_id, doctor_day_id=body.doctor_day_id, slots=body.slots)
+    return JSONResponse(payload, status_code=status, headers=headers,
+                        media_type="application/json" if status < 400 else "application/problem+json")
+
+
+async def _create(conn: psycopg.AsyncConnection, body: BookingCreate, user: dict[str, Any],
+                  booking_id: str) -> tuple[int, dict[str, Any], dict[str, str]]:
+    """Предметна частина. Повертає (статус, тіло, заголовки) — і успіх, і відмову за правилом,
+    щоб повтор із тим самим ключем отримав ту саму відповідь. Точка збереження відкочує зайняті
+    слоти, якщо запис порушує інваріант 2 (один активний запис до лікаря на день)."""
+    try:
+        async with conn.transaction():  # SAVEPOINT
+            reason = await _take_slots(conn, body.doctor_day_id, body.slots)
             if reason is not None:
                 status, title = _REFUSALS[reason]
-                raise Problem(status, reason, title, f"doctor_day_id={body.doctor_day_id}, slots={body.slots}")
+                return status, _problem_body(status, reason, title,
+                                             f"doctor_day_id={body.doctor_day_id}, slots={body.slots}"), {}
             await conn.execute(
                 """INSERT INTO booking (id, channel, patient_id, doctor_day_id, slots, visit_reason, status, expires_at)
                    VALUES (%s, 'web', %s, %s, %s, %s, 'held', now() + make_interval(mins => %s))""",
                 (booking_id, user["id"], body.doctor_day_id, body.slots, body.visit_reason, config.HOLD_MINUTES),
             )
-            row = await (await conn.execute(_BOOKING_SELECT + " WHERE b.id = %s", (booking_id,))).fetchone()
-        # тут транзакцію вже зафіксовано
     except psycopg.errors.UniqueViolation:
-        raise Problem(
-            409,
-            "already-booked",
-            "Patient already has an active booking with this doctor on this day",
-            f"doctor_day_id={body.doctor_day_id}",
-        ) from None
-
-    log("booking.created", booking_id=booking_id, doctor_day_id=body.doctor_day_id, slots=body.slots)
-    response.headers["Location"] = f"/v1/bookings/{booking_id}"
-    response.headers["ETag"] = f'"{row["version"]}"'
-    return _booking_json(row)
+        return 409, _problem_body(409, "already-booked",
+                                  "Patient already has an active booking with this doctor on this day",
+                                  f"doctor_day_id={body.doctor_day_id}"), {}
+    row = await (await conn.execute(_BOOKING_SELECT + " WHERE b.id = %s", (booking_id,))).fetchone()
+    return 201, _booking_json(row), {"Location": f"/v1/bookings/{booking_id}", "ETag": f'"{row["version"]}"'}
 
 
 def _encode_cursor(created_at: datetime, booking_id: str) -> str:
@@ -225,7 +307,7 @@ async def get_booking(booking_id: str, user: User, response: Response) -> dict[s
     return _booking_json(row)
 
 
-# ---------------------------------------------------------------- change, cancel, close day
+# change, cancel, close day
 
 
 class BookingUpdate(BaseModel):
@@ -255,6 +337,7 @@ async def update_booking(
 ) -> dict[str, Any]:
     """Причина візиту з If-Match: умова версії й зміна — один UPDATE, тож дві зміни з тією самою
     версією не перезапишуть одна одну (друга отримає 412)."""
+    await ratelimit.check(user)
     version = _etag_version(if_match)
     async with db.connection() as conn, conn.transaction():
         updated = await (
@@ -284,6 +367,7 @@ async def update_booking(
 async def cancel_booking(booking_id: str, user: User) -> dict[str, Any]:
     """Скасування власного запису. Рядок блокується; слоти повертаються лише при переході
     held|confirmed -> cancelled, тому повторне скасування повертає той самий стан і слоти вдруге не віддає."""
+    await ratelimit.check(user)
     async with db.connection() as conn, conn.transaction():
         current = await (
             await conn.execute(
@@ -332,6 +416,7 @@ _DAY_SELECT = """SELECT d.id, d.day, d.clinic_tz, d.slots_total, d.slots_taken, 
 async def close_doctor_day(doctor_day_id: str, staff: Staff) -> dict[str, Any]:
     """Реєстратор закриває день: нові записи обох каналів отримують відмову day-closed (take_slots),
     активні записи скасовуються (cancel_reason=day-closed), їхні слоти повертаються. Повтор — той самий стан."""
+    await ratelimit.check(staff)
     async with db.connection() as conn, conn.transaction():
         day = await (
             await conn.execute("SELECT id FROM doctor_day WHERE id = %s FOR UPDATE", (doctor_day_id,))
@@ -361,6 +446,6 @@ async def list_all_doctor_days(staff: Staff) -> dict[str, Any]:
     """Розклад для реєстратури: усі дні, включно із закритими (крім тестових днів дослідів)."""
     async with db.connection() as conn:
         rows = await (
-            await conn.execute(_DAY_SELECT + " WHERE NOT d.unprotected_test ORDER BY d.day, doc.full_name, d.id")
+            await conn.execute(_DAY_SELECT + " WHERE NOT d.unprotected_test AND NOT d.experiment ORDER BY d.day, doc.full_name, d.id")
         ).fetchall()
     return {"items": [_day_json(r) for r in rows]}

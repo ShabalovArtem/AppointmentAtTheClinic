@@ -1,0 +1,96 @@
+[
+  {
+    "check": "немає Idempotency-Key — 400",
+    "ok": true,
+    "evidence": {
+      "status": 400
+    }
+  },
+  {
+    "check": "ключ коротший за 8 символів — 400",
+    "ok": true,
+    "evidence": {
+      "status": 400
+    }
+  },
+  {
+    "check": "повтор із тим самим тілом через інший екземпляр — та сама відповідь",
+    "ok": true,
+    "evidence": {
+      "first": [
+        201,
+        "app-a",
+        "bk-c8f9752544f54273a556"
+      ],
+      "repeat": [
+        201,
+        "app-b",
+        "bk-c8f9752544f54273a556"
+      ]
+    }
+  },
+  {
+    "check": "той самий ключ з іншим тілом — 422",
+    "ok": true,
+    "evidence": {
+      "status": 422
+    }
+  },
+  {
+    "check": "той самий ключ іншого користувача — окрема операція (201, інший id)",
+    "ok": true,
+    "evidence": {
+      "status": 201
+    }
+  },
+  {
+    "check": "збережена відмова 409 повторюється з тим самим тілом",
+    "ok": true,
+    "evidence": {
+      "first": 409,
+      "repeat": 409,
+      "type": "https://example.edu/problems/already-booked"
+    }
+  },
+  {
+    "check": "12 одночасних дублікатів: один запис, усі 201 — той самий id, інші — 409 «ключ обробляється»",
+    "ok": true,
+    "evidence": {
+      "statuses": {
+        "201": 12
+      },
+      "distinct_ids": 1,
+      "bookings": 1,
+      "replayed": 11
+    }
+  },
+  {
+    "check": "ключ збережено: стан done, відповідь 201, строк 24 год",
+    "ok": true,
+    "evidence": {
+      "row": "done 201 1 day"
+    }
+  },
+  {
+    "check": "Д2.1: ліміт 120/хв спільний для app-a і app-b — далі 429 з Retry-After",
+    "ok": true,
+    "evidence": {
+      "not_limited": 120,
+      "limited": 10,
+      "limited_by_instance": {
+        "app-b": 5,
+        "app-a": 5
+      },
+      "retry_after_example": "39"
+    }
+  },
+  {
+    "check": "прострочені ключі прибрано порціями (1 200 → 0, порції по 500)",
+    "ok": true,
+    "evidence": {
+      "before": 1200,
+      "left": 0,
+      "log": null
+    }
+  }
+]

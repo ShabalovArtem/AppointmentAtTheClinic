@@ -1,0 +1,16 @@
+{
+  "rows_in_booking": 100450,
+  "rows_for_patient": 100,
+  "without_index": {
+    "execution_ms": 8.004,
+    "planning_ms": 0.795,
+    "top_scan": "->  Seq Scan on booking b  (cost=0.00..2805.62 rows=85 width=116) (actual time=0.015..7.665 rows=100 loops=1)",
+    "shared_buffers": "shared hit=1560"
+  },
+  "with_index": {
+    "execution_ms": 0.189,
+    "planning_ms": 0.675,
+    "top_scan": "->  Index Scan using booking_patient_newest on booking b  (cost=0.42..337.77 rows=85 width=116) (actual time=0.025..0.100 rows=21 loops=1)",
+    "shared_buffers": "shared hit=25 read=3"
+  }
+}

@@ -174,7 +174,7 @@
                         <thead><tr><th>ЛР</th><th>що на сайті</th><th>стан</th></tr></thead>
                         <tbody>
                         <tr><td>ЛР1</td><td>каталог, запис (утримання слотів), мої записи з курсором, Problem Details</td><td><span class="badge ok">готово</span></td></tr>
-                        <tr><td>ЛР2</td><td>зміна причини з If-Match і скасування — <b>готово</b>; Idempotency-Key, дослід «20 пацієнтів на останній слот» — далі</td><td><span class="badge processing">частково</span></td></tr>
+                        <tr><td>ЛР2</td><td>інваріант за одночасних записів (20 пацієнтів на останній слот), Idempotency-Key, повтори з тим самим ключем і «результат невідомий», ліміт частоти, If-Match, повторне скасування</td><td><span class="badge ok">готово</span></td></tr>
                         <tr><td>ЛР3</td><td>реєстрація й вхід пацієнта, вхід реєстратора, закриття дня лікаря — <b>готово</b>; CORS/Origin, обмеження спроб входу — далі</td><td><span class="badge processing">частково</span></td></tr>
                         <tr><td>ЛР4</td><td>перевірка поліса у страховій (довга операція, outbox, Kafka)</td><td><span class="badge">далі</span></td></tr>
                         <tr><td>ЛР5</td><td>сповіщення наживо через WebSocket</td><td><span class="badge">далі</span></td></tr>

@@ -14,6 +14,7 @@ import sys
 import threading
 import urllib.error
 import urllib.request
+import uuid
 from collections import Counter
 from pathlib import Path
 
@@ -29,6 +30,8 @@ def call(base, method, path, user=None, body=None, raw=None, headers=None):
         req.add_header("X-User-Id", user)
     for k, v in (headers or {}).items():
         req.add_header(k, v)
+    if method == "POST" and path == "/v1/bookings" and "Idempotency-Key" not in (headers or {}):
+        req.add_header("Idempotency-Key", f"chk-{uuid.uuid4()}")  # з ЛР2 ключ обов'язковий
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
             status, hdrs, payload = resp.status, dict(resp.headers), resp.read()

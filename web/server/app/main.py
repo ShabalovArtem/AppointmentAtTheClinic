@@ -11,22 +11,26 @@ Your work goes into new modules that you include below. Where each lab plugs in:
 The contract of all routes is your openapi.yaml (start from openapi.example.yaml).
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import auth, cache, clinic, config, db, metrics, middleware, problems, service, telemetry
+from . import auth, cache, clinic, config, idempotency, db, metrics, middleware, problems, service, telemetry
 from .jsonlog import log
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await db.open_pool()
+    cleanup = asyncio.create_task(idempotency.cleanup_loop())  # O2.2: expired keys in batches
 
     log("app.started")
     yield
+
+    cleanup.cancel()
 
     await cache.close()
     await db.close_pool()
@@ -47,7 +51,7 @@ app.add_middleware(
     allow_origins=[config.CLIENT_ORIGIN],
     allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["Content-Type", "Authorization", "Idempotency-Key", "If-Match", "X-User-Id", "X-Request-ID"],
-    expose_headers=["Location", "ETag", "Retry-After", "X-Request-ID", "X-Instance"],
+    expose_headers=["Location", "ETag", "Retry-After", "X-Request-ID", "X-Instance", "Idempotent-Replayed"],
 )
 app.include_router(auth.router)  # login, registration, logout, me
 app.include_router(clinic.router)  # C02, lab 1: catalog, main operation, list with a cursor
