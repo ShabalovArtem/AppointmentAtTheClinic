@@ -23,6 +23,7 @@ import random
 import time
 from collections import OrderedDict, deque
 from dataclasses import dataclass, field
+from typing import Any
 
 import psycopg
 from fastapi import APIRouter, Depends, Response
@@ -90,7 +91,9 @@ class Stats:
         self.rejected_overload = 0  # 429: черга повна, запит не прийнято
         self.rejected_shutdown = 0  # 503 під час завершення роботи
         self.outcomes = {"done": 0, "rejected": 0, "failed": 0}
-        self.busy = 0  # обробники, що зараз обробляють запит
+        self.busy = 0  # обробники, що зараз обробляють запит (у режимі ray — незавершені задачі Ray)
+        self.submitted = 0  # подано задач Ray (О3.2)
+        self.max_in_flight = 0  # найбільша кількість незавершених задач Ray одночасно
         self.order_violations = 0
         self.samples: dict[str, deque[float]] = {
             name: deque(maxlen=self.SAMPLE) for name in ("queue_wait_ms", "processing_ms", "total_ms", "delivery_wait_ms")
@@ -123,13 +126,16 @@ _workers: list[asyncio.Task[None]] = []
 _accepting = False
 
 
-# ---------------------------------------------------------------- lifecycle (called from main.lifespan)
+# lifecycle (called from main.lifespan)
 
 
 def start() -> None:
     global queue, _accepting
     queue = asyncio.Queue(maxsize=config.QUEUE_CAPACITY)
-    _workers.extend(asyncio.create_task(_worker(n), name=f"worker-{n}") for n in range(config.WORKERS))
+    if config.EXECUTION == "ray":  # ЛР3: обробка в задачах Ray, межа незавершених задач IN_FLIGHT_LIMIT
+        _workers.append(asyncio.create_task(_ray_dispatcher(), name="ray-dispatcher"))
+    else:  # ЛР1: локальний пул WORKERS обробників
+        _workers.extend(asyncio.create_task(_worker(n), name=f"worker-{n}") for n in range(config.WORKERS))
     _accepting = True
 
     metrics.gauge("queue_length", lambda: queue.qsize() if queue else 0)
@@ -143,11 +149,18 @@ def start() -> None:
     metrics.gauge("timing_order_violations", lambda: stats.order_violations)
     metrics.gauge("timing_ms", stats.percentiles)
     metrics.gauge("resource_mode", lambda: config.RESOURCE_MODE)
+    metrics.gauge("execution", lambda: config.EXECUTION)
+    metrics.gauge("in_flight_limit", lambda: config.IN_FLIGHT_LIMIT)
+    metrics.gauge("ray_in_flight", lambda: stats.busy if config.EXECUTION == "ray" else 0)
+    metrics.gauge("ray_submitted", lambda: stats.submitted)
+    metrics.gauge("ray_max_in_flight", lambda: stats.max_in_flight)
     log(
         "booking.started",
         queue_capacity=config.QUEUE_CAPACITY,
         workers=config.WORKERS,
         resource_mode=config.RESOURCE_MODE,
+        execution=config.EXECUTION,
+        in_flight_limit=config.IN_FLIGHT_LIMIT,
     )
 
 
@@ -168,7 +181,7 @@ async def stop() -> None:
     await asyncio.gather(*_workers, return_exceptions=True)
 
 
-# ---------------------------------------------------------------- routes
+# routes
 
 
 @router.post("/booking-requests", status_code=202)
@@ -319,7 +332,7 @@ async def get_doctor_day(doctor_day_id: str) -> dict[str, object]:
     }
 
 
-# ---------------------------------------------------------------- workers
+# workers
 
 
 async def _worker(n: int) -> None:
@@ -483,3 +496,119 @@ def _remember(request_id: str, timing: Timing) -> None:
     timings[request_id] = timing
     while len(timings) > TIMINGS_MAX:
         timings.popitem(last=False)
+
+
+# ЛР3: задачі Ray
+
+
+def _ray_connect() -> None:
+    from . import ray_tasks
+
+    while True:
+        try:
+            ray_tasks.connect()
+            log("ray.connected", address=config.RAY_ADDRESS)
+            return
+        except Exception as exc:  # noqa: BLE001 - кластер ще стартує
+            log("ray.connect_failed", error=type(exc).__name__)
+            time.sleep(2)
+
+
+async def _ray_dispatcher() -> None:
+    """Подає задачі Ray, доки незавершених менше за IN_FLIGHT_LIMIT (О3.2), і обробляє ПЕРШИЙ готовий
+    результат (ray.wait, num_returns=1), а не в порядку подання. Решта запитів чекає в черзі ЛР1."""
+    import ray
+
+    from . import ray_tasks
+
+    assert queue is not None
+    await asyncio.to_thread(_ray_connect)
+    settings = ray_tasks.task_settings()
+    pending: dict[Any, Job] = {}
+    while True:
+        try:
+            while len(pending) < config.IN_FLIGHT_LIMIT:
+                if pending:
+                    try:
+                        job = queue.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                else:
+                    job = await queue.get()  # незавершених задач немає: чекати роботу без опитування
+                ref = await _ray_submit(job, settings)
+                if ref is not None:
+                    pending[ref] = job
+            if not pending:
+                continue
+            ready, _ = await asyncio.to_thread(ray.wait, list(pending), num_returns=1, timeout=0.05)
+            for ref in ready:
+                await _ray_finish(pending.pop(ref), ref)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - диспетчер не має зупинятися
+            log("ray.dispatcher_error", error=type(exc).__name__)
+            await asyncio.sleep(0.5)
+
+
+async def _ray_submit(job: Job, settings: dict[str, Any]) -> Any:
+    from . import ray_tasks
+
+    assert queue is not None
+    await job.persisted.wait()
+    if job.dropped:
+        queue.task_done()
+        return None
+    timing = timings.get(job.request_id)
+    if timing is not None:
+        timing.started = time.monotonic()
+    try:
+        async with db.connection() as conn:
+            await conn.execute(
+                "UPDATE booking_request SET state = 'processing', started_at = now() WHERE id = %s", (job.request_id,)
+            )
+        ref = await asyncio.to_thread(
+            ray_tasks.process_request.remote, job.request_id, job.doctor_day_id, job.patient_id, job.slots, settings
+        )
+    except Exception as exc:  # noqa: BLE001
+        log("ray.submit_failed", request_id=job.request_id, error=type(exc).__name__)
+        await _ray_fail(job, type(exc).__name__)
+        queue.task_done()
+        return None
+    stats.busy += 1
+    stats.submitted += 1
+    stats.max_in_flight = max(stats.max_in_flight, stats.busy)
+    return ref
+
+
+async def _ray_finish(job: Job, ref: Any) -> None:
+    import ray
+
+    assert queue is not None
+    try:
+        result = await asyncio.to_thread(ray.get, ref)
+        # рішення вже записав приймач; тут — лише облік часу й лічильників
+        _mark_finished(job, result["decision"])
+        log("ray.task_done", request_id=job.request_id, decision=result["decision"], duplicate=result["duplicate"],
+            deliveries=result["deliveries"], worker=result["worker"])
+    except Exception as exc:  # noqa: BLE001 - вичерпано повтори або прикладна помилка задачі
+        log("ray.task_failed", request_id=job.request_id, error=type(exc).__name__)
+        await _ray_fail(job, type(exc).__name__)
+    finally:
+        stats.busy -= 1
+        queue.task_done()
+
+
+async def _ray_fail(job: Job, reason: str) -> None:
+    """failed — лише якщо приймач не записав рішення (ефект міг бути прийнятий до відмови)."""
+    try:
+        async with db.connection() as conn:
+            row = await (
+                await conn.execute(
+                    """UPDATE booking_request SET state = 'failed', reason = %s, finished_at = now()
+                       WHERE id = %s AND state NOT IN ('done', 'rejected') RETURNING id""",
+                    (reason, job.request_id),
+                )
+            ).fetchone()
+        _mark_finished(job, "failed" if row else "done")
+    except Exception:  # noqa: BLE001
+        log("booking.state_lost", request_id=job.request_id)

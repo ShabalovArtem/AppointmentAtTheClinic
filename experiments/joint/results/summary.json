@@ -3,21 +3,21 @@
   "slots_total": 10,
   "web_requests": 5,
   "web_statuses": {
-    "201": 5
+    "409": 5
   },
   "call_center_requests": 20,
   "call_center_submit_statuses": {
     "202": 20
   },
   "call_center_final": {
-    "rejected:no-free-slots": 15,
-    "done:": 5
+    "rejected:no-free-slots": 10,
+    "done:": 10
   },
   "p-1001": {
-    "web": 201,
+    "web": 409,
     "call_center": "rejected:no-free-slots"
   },
-  "seconds": 3.12,
+  "seconds": 5.16,
   "resource_after": {
     "id": "dd-joint",
     "doctor_id": "doc-4",
@@ -29,7 +29,7 @@
     "closed": false,
     "booked": 10,
     "bookings": 10,
-    "web_bookings": 5,
+    "web_bookings": 0,
     "invariant_ok": true
   }
 }

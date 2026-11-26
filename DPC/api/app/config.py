@@ -45,6 +45,11 @@ COMPUTE_TOLERANCE = _float("COMPUTE_TOLERANCE", 1e-6)  # relative tolerance agai
 EXECUTION = os.environ.get("EXECUTION", "local")  # local | ray (lab 3)
 IN_FLIGHT_LIMIT = _int("IN_FLIGHT_LIMIT", 8)  # O3.2
 RECEIVER_DELAY_MS = _int("RECEIVER_DELAY_MS", 0)  # D3.4
+# lab 3: Ray tasks and the effect receiver
+RECEIVER_URL = os.environ.get("RECEIVER_URL", "http://api:8000")  # where Ray tasks publish effects (O3.3)
+RECEIVER_TIMEOUT_S = _float("RECEIVER_TIMEOUT_S", 30.0)
+RAY_TASK_MAX_RETRIES = _int("RAY_TASK_MAX_RETRIES", 3)  # retries after a system failure of the worker (O3.1)
+RAY_TASK_CPUS = _float("RAY_TASK_CPUS", 0.5)
 FENCING = os.environ.get("FENCING", "on") == "on"  # O6.3
 
 PROBLEM_BASE = os.environ.get("PROBLEM_BASE", "https://example.edu/problems/")

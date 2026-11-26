@@ -27,7 +27,7 @@
 <nav class="tabs" role="tablist">
     <button role="tab" data-tab="lab1">ЛР1 Черга й пул<span class="state">✓</span></button>
     <button role="tab" data-tab="lab2">ЛР2 Розрахунок<span class="state">✓</span></button>
-    <button role="tab" data-tab="lab3">ЛР3 Ray</button>
+    <button role="tab" data-tab="lab3">ЛР3 Ray<span class="state">✓</span></button>
     <button role="tab" data-tab="lab4">ЛР4 Spark</button>
     <button role="tab" data-tab="lab5">ЛР5 Потік</button>
     <button role="tab" data-tab="lab6">ЛР6 Координація</button>
@@ -167,15 +167,16 @@
             <b>Ray і відновлення.</b> Обробка запитів переходить у задачі Ray; слот займає приймач ефекту, ключ ефекту —
             <code>request_id</code>. Повтор задачі після відмови не займає слот удруге.
         </p>
-        <div class="planned">Задачі Ray ще не підключені (<code>EXECUTION=ray</code>). Запити вкладки ЛР1 працюють у локальному пулі.</div>
+        <p class="hint">Режим задає сервер: <code>EXECUTION=ray</code> (задачі Ray, межа <code>IN_FLIGHT_LIMIT</code>) або <code>local</code> (пул ЛР1). Запити подаються на вкладці ЛР1.</p>
         <div class="grid">
             <div class="card">
                 <h2>Керована відмова after_effect_before_ack</h2>
                 <p class="hint">Виконавець падає після запису ефекту, але до підтвердження задачі.</p>
                 <pre class="out">docker compose exec api touch /faults/after_effect_before_ack
-# подати запит на вкладці ЛР1, дочекатися повтору
-docker compose logs ray-worker | findstr fault.hit
-docker compose exec api rm -f /faults/after_effect_before_ack</pre>
+# подати запит на вкладці ЛР1 — задача впаде після запису ефекту, Ray її повторить
+docker compose logs api | findstr "effect.duplicate ray.task_done"
+# або дослід цілком:
+python DPC/experiments/lab3/fault.py</pre>
             </div>
             <div class="card">
                 <h2>Перевірка після відмови</h2>

@@ -1,0 +1,55 @@
+[
+  {
+    "check": "12 одночасних доставок: один запис, +2 слоти, deliveries = 12, одна перша доставка",
+    "ok": true,
+    "evidence": {
+      "statuses": {
+        "200": 12
+      },
+      "decisions": {
+        "done": 12
+      },
+      "first_deliveries": 1,
+      "deliveries": 12,
+      "bookings": 1,
+      "slots_taken_delta": 2
+    }
+  },
+  {
+    "check": "повторна доставка — збережене рішення, ресурс без змін",
+    "ok": true,
+    "evidence": {
+      "reply": {
+        "effect_key": "eff-db41e1006d",
+        "decision": "done",
+        "reason": null,
+        "booking_id": "eff-db41e1006d",
+        "deliveries": 13,
+        "duplicate": true
+      },
+      "slots_taken": 1280
+    }
+  },
+  {
+    "check": "недійсний поліс — rejected/policy-invalid; повтор — те саме рішення, ресурс без змін",
+    "ok": true,
+    "evidence": {
+      "first": {
+        "effect_key": "eff-b5e6dea915",
+        "decision": "rejected",
+        "reason": "policy-invalid",
+        "booking_id": null,
+        "deliveries": 1,
+        "duplicate": false
+      },
+      "repeat": {
+        "effect_key": "eff-b5e6dea915",
+        "decision": "rejected",
+        "reason": "policy-invalid",
+        "booking_id": null,
+        "deliveries": 2,
+        "duplicate": true
+      }
+    }
+  }
+]

@@ -45,7 +45,7 @@ const STATUS_UA = {held: "утримано", confirmed: "підтверджен�
 const CANCEL_UA = {patient: "пацієнтом", "day-closed": "день закрито реєстратурою"};
 const statusBadge = (s) => `<span class="badge ${s === "held" ? "processing" : s === "confirmed" || s === "visited" ? "done" : "rejected"}">${esc(STATUS_UA[s] ?? s)}</span>`;
 
-// ------------------------------------------------------------------ журнал і схема
+// журнал і схема
 
 $("api-addr").textContent = API;
 let flashTimer;
@@ -89,7 +89,7 @@ async function pingApi() {
     }
 }
 
-// ------------------------------------------------------------------ вхід, реєстрація, вихід
+// вхід, реєстрація, вихід
 
 let me = null; // {id, login, name, role}
 
@@ -188,7 +188,7 @@ async function restoreSession() {
     }
 }
 
-// ------------------------------------------------------------------ вкладки
+// вкладки
 
 const subtabs = [...document.querySelectorAll(".subtabs button")];
 function openPane(name) {
@@ -199,7 +199,7 @@ function openPane(name) {
 }
 subtabs.forEach((b) => (b.onclick = () => openPane(b.dataset.pane)));
 
-// ------------------------------------------------------------------ каталог і запис
+// каталог і запис
 
 let currentDoctor = null;
 
@@ -283,7 +283,7 @@ async function book(doctorDayId, slots, retryOf = null) {
     }
 }
 
-// ------------------------------------------------------------------ мої записи: усі сторінки курсора, дії
+// мої записи: усі сторінки курсора, дії
 
 const bookingsById = new Map();
 

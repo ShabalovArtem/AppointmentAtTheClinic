@@ -8,9 +8,9 @@
     "409": 19
   },
   "by_instance": {
-    "app-a:201": 1,
-    "app-a:409": 9,
-    "app-b:409": 10
+    "app-b:201": 1,
+    "app-b:409": 9,
+    "app-a:409": 10
   },
   "refusal_types": {
     "no-free-slots": 19
@@ -28,144 +28,144 @@
   },
   "requests": [
     {
-      "patient": "p-0b0a96d39b2b",
-      "instance": "app-a",
+      "patient": "p-76bda736065b",
+      "instance": "app-b",
       "status": 201,
       "type": null,
-      "ms": 54.0
+      "ms": 4018.6
     },
     {
-      "patient": "p-041b5e3fe24a",
+      "patient": "p-1354a02f019a",
+      "instance": "app-b",
+      "status": 409,
+      "type": "no-free-slots",
+      "ms": 4028.0
+    },
+    {
+      "patient": "p-215fe78543b7",
       "instance": "app-a",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 58.6
+      "ms": 4031.7
     },
     {
-      "patient": "p-812f1014e4cc",
-      "instance": "app-b",
-      "status": 409,
-      "type": "no-free-slots",
-      "ms": 63.2
-    },
-    {
-      "patient": "p-e0e413bd2531",
+      "patient": "p-66bae4e0f601",
       "instance": "app-a",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 66.7
+      "ms": 4032.3
     },
     {
-      "patient": "p-61337730ecfa",
+      "patient": "p-ef735bb4311c",
       "instance": "app-b",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 67.1
+      "ms": 5043.2
     },
     {
-      "patient": "p-b374300ea2b7",
+      "patient": "p-6fc229070274",
       "instance": "app-a",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 73.2
+      "ms": 5043.3
     },
     {
-      "patient": "p-842097d127c4",
-      "instance": "app-b",
-      "status": 409,
-      "type": "no-free-slots",
-      "ms": 76.4
-    },
-    {
-      "patient": "p-bfb97ac7ced9",
-      "instance": "app-b",
-      "status": 409,
-      "type": "no-free-slots",
-      "ms": 77.3
-    },
-    {
-      "patient": "p-1bd01360becd",
+      "patient": "p-d3a332285e2f",
       "instance": "app-a",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 77.9
+      "ms": 5047.1
     },
     {
-      "patient": "p-72b0d5a23979",
+      "patient": "p-ba0bb75d623b",
       "instance": "app-a",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 81.0
+      "ms": 5049.3
     },
     {
-      "patient": "p-a2814f133314",
+      "patient": "p-f9b453f73f03",
       "instance": "app-b",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 83.0
+      "ms": 5052.5
     },
     {
-      "patient": "p-d76601838f11",
-      "instance": "app-b",
-      "status": 409,
-      "type": "no-free-slots",
-      "ms": 83.8
-    },
-    {
-      "patient": "p-e8c9a37c8d89",
-      "instance": "app-b",
-      "status": 409,
-      "type": "no-free-slots",
-      "ms": 84.4
-    },
-    {
-      "patient": "p-f6e051c75615",
+      "patient": "p-7610d03be6dc",
       "instance": "app-a",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 87.5
+      "ms": 5053.6
     },
     {
-      "patient": "p-68f1fc9aa7d2",
+      "patient": "p-a658e97693e3",
       "instance": "app-b",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 89.0
+      "ms": 5056.0
     },
     {
-      "patient": "p-c552cf001973",
-      "instance": "app-a",
-      "status": 409,
-      "type": "no-free-slots",
-      "ms": 90.2
-    },
-    {
-      "patient": "p-49d7e503764f",
-      "instance": "app-a",
-      "status": 409,
-      "type": "no-free-slots",
-      "ms": 91.9
-    },
-    {
-      "patient": "p-819df3bb3c20",
+      "patient": "p-f169f69e5edf",
       "instance": "app-b",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 92.5
+      "ms": 5059.2
     },
     {
-      "patient": "p-4b6976ec4c86",
+      "patient": "p-9a96eb57e2fd",
       "instance": "app-a",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 94.5
+      "ms": 5060.5
     },
     {
-      "patient": "p-27c0191841ce",
+      "patient": "p-b490dd9cd86f",
+      "instance": "app-a",
+      "status": 409,
+      "type": "no-free-slots",
+      "ms": 5063.3
+    },
+    {
+      "patient": "p-adc84d8be8b1",
       "instance": "app-b",
       "status": 409,
       "type": "no-free-slots",
-      "ms": 96.5
+      "ms": 5063.3
+    },
+    {
+      "patient": "p-c53bf6c7906c",
+      "instance": "app-a",
+      "status": 409,
+      "type": "no-free-slots",
+      "ms": 5064.6
+    },
+    {
+      "patient": "p-5ab728ec7d44",
+      "instance": "app-b",
+      "status": 409,
+      "type": "no-free-slots",
+      "ms": 5067.5
+    },
+    {
+      "patient": "p-d6df416adffa",
+      "instance": "app-b",
+      "status": 409,
+      "type": "no-free-slots",
+      "ms": 5067.9
+    },
+    {
+      "patient": "p-c5ec348491fb",
+      "instance": "app-a",
+      "status": 409,
+      "type": "no-free-slots",
+      "ms": 5070.5
+    },
+    {
+      "patient": "p-039d37d17a77",
+      "instance": "app-b",
+      "status": 409,
+      "type": "no-free-slots",
+      "ms": 5070.4
     }
   ]
 }

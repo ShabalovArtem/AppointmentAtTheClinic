@@ -19,7 +19,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import booking, compute, config, db, middleware, problems, service
+from . import booking, compute, config, db, middleware, problems, receiver, service
 from .jsonlog import log
 
 
@@ -49,3 +49,4 @@ problems.install(app)
 app.include_router(service.router)
 app.include_router(booking.router)  # C02, lab 1
 app.include_router(compute.router)  # lab 2: parallel integration, histogram, cancel
+app.include_router(receiver.router)  # lab 3: effect receiver for Ray tasks

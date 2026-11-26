@@ -40,7 +40,7 @@ ID_PATTERN = r"^[A-Za-z0-9._:-]{1,128}$"
 # Поточний користувач: токен входу або (до ЛР3, USER_HEADER=on) заголовок X-User-Id — див. auth.py.
 
 
-# ---------------------------------------------------------------- catalog
+# catalog
 
 
 @router.get("/doctors")
@@ -86,7 +86,7 @@ async def list_doctor_days(doctor_id: str) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------- bookings
+# bookings
 
 
 class BookingCreate(BaseModel):

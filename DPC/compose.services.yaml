@@ -23,7 +23,10 @@ x-api: &api
     CS_GAP_MS: ${CS_GAP_MS:-0}
     RETRY_AFTER_S: ${RETRY_AFTER_S:-1}
     COMPUTE_START_METHOD: ${COMPUTE_START_METHOD:-forkserver}
-    EXECUTION: ${EXECUTION:-local}
+    RECEIVER_URL: ${RECEIVER_URL:-http://api:8000}
+    RAY_TASK_MAX_RETRIES: ${RAY_TASK_MAX_RETRIES:-3}
+    RAY_TASK_CPUS: ${RAY_TASK_CPUS:-0.5}
+    EXECUTION: ${EXECUTION:-ray}
     IN_FLIGHT_LIMIT: ${IN_FLIGHT_LIMIT:-8}
     RECEIVER_DELAY_MS: ${RECEIVER_DELAY_MS:-0}
     FENCING: ${FENCING:-on}
@@ -101,6 +104,13 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      # lab 3: with EXECUTION=ray requests are processed by Ray tasks
+      ray-head:
+        condition: service_started
+      ray-worker:
+        condition: service_started
+      ray-worker-extra:
+        condition: service_started
 
   ray-head:
     <<: *api

@@ -1,9 +1,5 @@
 # Запис до клініки - спільний проєкт курсів «Обмін даними у Web-застосунках» і «Розподілені та паралельні обчислення»
 
-> Опис реалізованого проєкту за шаблонами [web/README-template.md](web/README-template.md) і
-> [DPC/README-template.md](DPC/README-template.md). Описи наданих каркасів - [web/README-kit.md](web/README-kit.md),
-> [DPC/README-kit.md](DPC/README-kit.md). Поточний стан: **виконано ЛР1 і ЛР2 обох курсів**, решта - у роботі.
-
 ## 1. Курс і тема
 
 
@@ -126,11 +122,13 @@ flowchart LR
 | `web/experiments/` | `lab1_check.py` - перевірка ЛР1 Web, `card_routes_check.py`, `reset_web.sql`; `lab2/` - досліди ЛР2 (`race.py`, `idempotency_check.py`, `in_progress.py`, `lost_response.py`, `client_retry.py`, `compare.py`, `explain.py`); результати в `web/results/` |
 | `web/compose.yaml`, `web/configs/` | сервіси Web (nginx, app-a/b, postgres, migrate, Kafka, симулятор, шлюзи…) |
 | `DPC/api/app/booking.py` | **DPC ЛР1**: черга, пул обробників, повільний виклик, критична секція (два режими), метрики й час |
+| `DPC/api/app/ray_tasks.py`, `receiver.py` | **DPC ЛР3**: задача Ray і диспетчер з межею незавершених задач; приймач ефекту `/internal/v1/effects` |
 | `DPC/api/app/compute.py`, `integrate.py` | **DPC ЛР2**: `/v1/compute` (поділ, процеси, об'єднання, еталон, межі похибки, асинхронний режим і скасування), `/v1/histogram`; тіло процесу-частини |
 | `DPC/compose.services.yaml`, `DPC/compose.infra.yaml`, `DPC/compose.yaml` | сервіси DPC; інфраструктура для окремого запуску DPC; окремий запуск |
 | `DPC/openapi.yaml`, `DPC/checks.yaml` | контракт і перевірка DPC |
 | `DPC/client/` | клієнт кол-центру й лабораторних DPC (вкладки ЛР1-ЛР6) |
 | `DPC/experiments/lab1/` | досліди DPC ЛР1: `queue_full.py`, `race.py`, `reset.sql`; результати в `DPC/results/lab1/` |
+| `DPC/experiments/lab3/` | досліди DPC ЛР3: `fault.py`, `receiver_check.py`, `backpressure.py`; результати в `DPC/results/lab3/` |
 | `DPC/experiments/lab2/` | досліди DPC ЛР2: `correctness.py`, `accuracy.py`, `speedup.py`, `shared_sum.py`, `extras.py`, `profile_summary.py`; результати в `DPC/results/lab2/` |
 | `DPC/{spark,coordinator,tools,configs}` | заготовки наступних робіт DPC із каркаса |
 
@@ -185,7 +183,8 @@ python -m http.server 8083 --bind 127.0.0.1 --directory DPC/client
 Параметри (типові значення - у `web/.env.example`, `DPC/.env.example`): `HOLD_MINUTES=15` (утримання запису сайту);
 Web ЛР2 - `INVARIANT_MODE=protected|conditional|unprotected`, `INVARIANT_GAP_MS=0`, `IDEMPOTENCY_TTL_HOURS=24`,
 `IDEMPOTENCY_WAIT_MS=200`, `RATE_LIMIT_PER_MIN=120` (Redis запускається разом з app-a/app-b);
-DPC - `QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected`, `SLOW_MIN_MS=200`, `SLOW_MAX_MS=800`,
+DPC - `EXECUTION=ray|local` (з ЛР3 типово `ray`), `IN_FLIGHT_LIMIT=8`, `RECEIVER_DELAY_MS=0`, `RAY_TASK_MAX_RETRIES=3`,
+`QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected` (лише `EXECUTION=local`), `SLOW_MIN_MS=200`, `SLOW_MAX_MS=800`,
 `CS_GAP_MS=0`, `RETRY_AFTER_S=1`. Зміна режиму DPC: `RESOURCE_MODE=unprotected CS_GAP_MS=50 docker compose up -d api`
 (PowerShell: `$env:RESOURCE_MODE='unprotected'; $env:CS_GAP_MS='50'; docker compose up -d api`; повернення -
 `Remove-Item Env:RESOURCE_MODE, Env:CS_GAP_MS; docker compose up -d api`).
@@ -207,9 +206,6 @@ DPC - `QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected`, `SLO
 | О1.6 Система, `/health`, журнал | одна команда запускає nginx, app-a, app-b, postgres; `/health` без звернення до бази на кожному екземплярі; middleware каркаса: `X-Request-ID`, рядок JSON на кожен запит | `lab1_check.py`: `/health` app-a і app-b; `X-Request-ID` повертається; 20 запитів через nginx розподілено на обидва екземпляри. Рядок журналу: `{"time": "…", "instance": "app-a", "event": "http.request", "request_id": "…", "method": "GET", "route": "/health", "status": 200, "duration_ms": 0.3}` - шаблон маршруту, без тіл, паролів і токенів |
 | О1.7 Ядро. Клієнт | [web/client/](web/client/): вибір пацієнта, каталог лікарів і днів, запис (1-2 слоти, причина), показ результату й Problem Details (статус, заголовок, деталі, помилки полів), «Мої записи» - читає **всі** сторінки курсора; читає лише відомі поля, тож нові поля відповіді нічого не ламають; схема «Як це працює» підсвічує екземпляр, що відповів; журнал запитів | перевірено в браузері: запис → «201 · Запис створено», повтор → «409 · Patient already has an active booking…»; `p-1004`: «6 записів, 3 стор.» |
 
-Перевірка одним запуском (із кореня, стек запущено): `python web/experiments/lab1_check.py` - 23/23 OK,
-свідчення - [web/results/lab1/summary.json](web/results/lab1/summary.json). Повторний запуск - після
-`docker compose exec -T postgres psql -U app -d app < web/experiments/reset_web.sql`.
 
 ### Web ЛР2. Конкуренція та повторення запитів
 
@@ -226,155 +222,96 @@ DPC - `QUEUE_CAPACITY=50`, `WORKERS=4`, `RESOURCE_MODE=locked|unprotected`, `SLO
 | Д2.5 Повторне скасування | `POST /v1/bookings/{id}/cancel`: рядок блокується, `release_slots()` лише при переході `held/confirmed → cancelled` | повторне скасування — той самий стан, вільних слотів не додається |
 | Д2.7 План запиту | `explain.py`: 100 000 записів, `EXPLAIN (ANALYZE, BUFFERS)` запиту списку до й після індексу `booking_patient_newest (patient_id, created_at DESC, id DESC)` | без індексу — `Seq Scan` 100 450 рядків + `top-N heapsort`, 1 560 буферів, **8,0 мс**; з індексом — `Index Scan` у потрібному порядку, зупиняється на 21-му рядку, без сортування, 28 буферів, **0,19 мс**. Послідовне сканування не вимикалось. Плани — `web/results/lab2/explain/` |
 
-**Чому блокування рядка (О2.1).** Перевірка й зміна спільного ресурсу виконуються в базі, тож захист діє між
-`app-a` і `app-b` та між сайтом і кол-центром DPC (локальний м'ютекс одного екземпляра цього не дав би).
-Блокування рядка обрано як робочий режим, бо в одній функції бази `take_slots()` воно поєднує всі перевірки
-правила (день існує, не закритий, вистачає слотів) і однаково викликається обома частинами проєкту. Атомарний
-умовний `UPDATE` (`conditional`) захищає так само (дослід Д2.2), але причину відмови доводиться з'ясовувати
-окремим читанням. Серіалізовна транзакція потребувала б повторів у разі конфлікту — без потреби, бо конфлікт
-стосується одного рядка.
+### Web ЛР3. Вхід і доступ
 
-Повний набір перевірок ЛР2 (із кореня, стек запущено; скрипти самі перезапускають app-a/app-b з потрібним режимом):
+| Пункт | Де реалізовано | Перевірка та свідчення |
+|---|---|---|
+| | | |
 
-```bash
-python web/experiments/lab2/race.py --mode protected
-```
+### Web ЛР4. Довгі операції, події й зовнішня система
 
-```bash
-python web/experiments/lab2/idempotency_check.py
-```
+| Пункт | Де реалізовано | Перевірка та свідчення |
+|---|---|---|
+| | | |
 
-```bash
-python web/experiments/lab2/lost_response.py
-```
+### Web ЛР5. Сповіщення через WebSocket
 
-`race.py --mode conditional|unprotected --gap-ms 50`, `in_progress.py`, `compare.py --rounds 5`, `explain.py`,
-`client_retry.py` (потрібні `pip install playwright` і клієнт на :8081) — решта дослідів. Результати — `web/results/lab2/`.
+| Пункт | Де реалізовано | Перевірка та свідчення |
+|---|---|---|
+| | | |
+
+### Web ЛР6. Зміна системи та поступове оновлення
+
+| Пункт | Де реалізовано | Перевірка та свідчення |
+|---|---|---|
+| | | |
 
 ### DPC ЛР1. Сервіс із чергою та модель виконання
-
-Модель виконання: один процес, цикл подій `asyncio` (uvicorn). Повільний виклик і доступ до бази - асинхронні
-(`asyncio.sleep`, psycopg 3 async), тому очікування не блокує приймання інших запитів і `/health`.
 
 | Пункт | Де реалізовано | Перевірка та свідчення |
 |---|---|---|
 | О1.1 Ядро. Приймання запитів | [DPC/api/app/booking.py](DPC/api/app/booking.py): `create_booking_request` → 202 + `Location`; стани `queued → processing → done \| rejected \| failed` у `booking_request`; `GET /v1/booking-requests/{id}`, `GET /v1/doctor-day/{id}` | «Заповнена черга»: усі 288 прийнятих - `done`. Недійсний поліс (`invalid-*`) → `rejected/policy-invalid`; брак слотів → `rejected/no-free-slots`; пацієнт уже записаний через сайт → `rejected/patient-already-booked`; повторний `request_id` → 409 |
-| О1.2 Ядро. Обмежена черга й перевантаження | `asyncio.Queue(maxsize=QUEUE_CAPACITY)`; приймання - `put_nowait`, при `QueueFull` одразу 429 + `Retry-After` до запису в базу | «Заповнена черга»: черга ≤ 50, 9977 × 429 - усі з `Retry-After`; 500 відхилених перевірено - жодного в системі; p95 `/health` = **3,8 мс** (поріг 100 мс) |
+| О1.2 Ядро. Обмежена черга й перевантаження | `asyncio.Queue(maxsize=QUEUE_CAPACITY)`; приймання - `put_nowait`, при `QueueFull` одразу 429 + `Retry-After` до запису в базу | «Заповнена черга»: черга ≤ 50, 9977 × 429 - усі з `Retry-After`; 500 відхилених перевірено - жодного в системі; p95 `/health` = 3,8 мс (поріг 100 мс) |
 | О1.3 Ядро. Пул обробників | `booking.start()` створює рівно `WORKERS` задач; `check_policy` - `await asyncio.sleep(...)` | `/metrics`: `workers=4`, максимум `processing` = 4; приймання й `/health` відповідали під час повного завантаження |
 | О1.4 Ядро. Захист спільного ресурсу | `_book_locked`: транзакція - блокування рядка `doctor_day`, спільна `take_slots()`, `INSERT booking`, стан запиту. `_book_unprotected` - окреме читання і запис абсолютного значення (тільки `race-unprotected`) | «Гонка за слоти»: 40 запитів на 20 слотів. Без синхронізації - 32 записи, `invariant_ok=false`; із блокуванням - 20 `done` / 20 `rejected`, `invariant_ok=true` |
 | О1.5 Час виконання й метрики | `Timing`: `time.monotonic()` у моменти надходження, початку й завершення оброблення та першої видачі кінцевого стану через GET; перевірка порядку (`timing_order_violations`); `/metrics`: `queue_length`, `processing`, `accepted`, `rejected`, `outcomes`, `timing_ms` | «Заповнена черга»: інтервали - у розд. 7; `timing_order_violations=0`; `DPC/results/lab1/queue-full/timing.csv` |
 
-**Синхронізація черги (О1.2).** Примітив - `asyncio.Queue` (усередині - `deque` і `asyncio.Future` очікувачів).
-Порожня черга: обробник у `await queue.get()` реєструє future і призупиняється, цикл подій його не виконує, доки
-`put_nowait` не розбудить future - активного очікування немає. Перевірка місця й постановка в чергу - одна синхронна
-дія `put_nowait` без точки перемикання корутин, тож двоє клієнтів не займуть останнє місце двічі.
-
-**Критична секція (О1.4).** Охоплює перевірку `slots_taken + slots ≤ slots_total` і зміну ресурсу; блокування -
-рядкове блокування PostgreSQL (`FOR UPDATE` у `take_slots()`), тож воно діє між обробниками DPC, екземплярами
-`app-a`/`app-b` і між каналами. Повільний виклик стоїть до критичної секції.
-
-Додатково перевірено (Д1.4 не заявляється): під час SIGTERM `lifespan` припиняє приймання й чекає `queue.join()` -
-усі прийняті запити дообробляються (60 із 60 `done`); нові клієнти бачать відмову з'єднання, а не 503, бо uvicorn
-закриває сокет раніше.
-
 ### DPC ЛР2. Паралельний чисельний розрахунок
-
-Функція картки Q(t) = amp·t²·(T − t) — кількість людей у черзі реєстратури (amp = 0,1 особи/год³, T = 12 год,
-пік ≈ 25,6 особи о 8-й годині). Інтеграл на [0; 12] — сумарне очікування за день: еталон через первісну
-amp·(T·t³/3 − t⁴/4) дорівнює **172,8 людино-години**; за формулою Літтла для 400 пацієнтів середній час у черзі
-172,8 / 400 год ≈ **25,9 хв** (поле `avg_wait_min`).
-
-**Схема розрахунку (О2.1).**
-
-```mermaid
-flowchart LR
-    req["POST /v1/compute<br/>a, b, n, workers, method, order, mode"] --> split["поділ одиниць [0, U) на workers<br/>суцільних діапазонів [k·U/p, (k+1)·U/p)"]
-    split --> p0["процес 0: порції по chunk<br/>локальна сума"]
-    split --> p1["процес 1"]
-    split --> p3["процес p−1"]
-    p0 --> q[["multiprocessing.Queue"]]
-    p1 --> q
-    p3 --> q
-    q --> merge["об'єднання сум (naive / kahan / pairwise)<br/>× h, еталон, похибка, межі"]
-```
-
-Одиниця сітки: для середніх прямокутників і трапецій — відрізок (U = n), для Сімпсона — пара відрізків (U = n/2),
-тож діапазони не мають пропусків і перекриття, а кінці пар Сімпсона рахуються в кожній парі окремо.
-**Послідовна частина:** перевірка параметрів, створення процесів (`Process.start`), збирання результатів із черги,
-`join`, об'єднання сум, еталон і межі похибки. Вона триває ≈ 0,02 с проти ≈ 2,2 с обчислення одним процесом (≈ 1 %).
 
 | Пункт | Де реалізовано | Перевірка та свідчення |
 |---|---|---|
 | О2.1 Ядро. Паралельне інтегрування | [DPC/api/app/compute.py](DPC/api/app/compute.py) (маршрут, поділ, об'єднання, еталон), [DPC/api/app/integrate.py](DPC/api/app/integrate.py) (тіло процесу; легкий модуль без FastAPI) — `POST /v1/compute` з `a, b, n, workers, method, order` | `correctness.py`, n = 10⁶: для 1, 2 і 4 процесів і трьох методів відносна похибка ≤ 10⁻¹² (допуск 10⁻⁶), розкид між p — 3·10⁻¹⁶ |
-| О2.2 Дослідження точності | межа методу (`method_error_bound`): середні прямокутники (b−a)h²·max\|f''\|/24, трапеції …/12, Сімпсон (b−a)h⁴·max\|f⁽⁴⁾\|/180; оцінка округлення (`rounding_error_bound`): (кількість доданків)·ε·Σ\|доданків\| | `accuracy.py`: для Q(t) і n = 8…2048 відношення e(n)/e(2n) = **4,000** (середні прямокутники й трапеції), похибка в межах оцінки; Сімпсон на Q(t) — похибка лише округлення (~10⁻¹⁴) за будь-якого n, бо Q кубічна (Q⁽⁴⁾ = 0); на тестовій sin(t) [0; π] відношення → **16,0** |
-| О2.3 Ядро. Прискорення | `timing` у відповіді: `spawn_s`, `start_s`, `compute_s`, `collect_merge_s`; параметр `affinity` для перевірки гіпотези | `speedup.py`, n = 2·10⁷, 5 вимірів: Sp₂ = 1,85, Sp₄ = **3,04** (Ep₄ = 0,76); профіль py-spy, гіпотеза й повторний вимір — нижче |
-| О2.4 Ядро. Спільна сума | `mode`: `none` — `ctx.RawValue`, `+=` без блокування; `lock` — `ctx.Value` під блокуванням; `local` — локальні суми | `shared_sum.py`, 4 процеси, 40 000 додавань: `none` втрачає **1,3–1,4 %** оновлень (результат поза допуском), `lock` і `local` — у межах допуску (3·10⁻¹⁴) |
+| О2.2 Дослідження точності | межа методу (`method_error_bound`): середні прямокутники (b−a)h²·max\|f''\|/24, трапеції …/12, Сімпсон (b−a)h⁴·max\|f⁽⁴⁾\|/180; оцінка округлення (`rounding_error_bound`): (кількість доданків)·ε·Σ\|доданків\| | `accuracy.py`: для Q(t) і n = 8…2048 відношення e(n)/e(2n) = 4,000 (середні прямокутники й трапеції), похибка в межах оцінки; Сімпсон на Q(t) — похибка лише округлення (~10⁻¹⁴) за будь-якого n, бо Q кубічна (Q⁽⁴⁾ = 0); на тестовій sin(t) [0; π] відношення 16,0 |
+| О2.3 Ядро. Прискорення | `timing` у відповіді: `spawn_s`, `start_s`, `compute_s`, `collect_merge_s`; параметр `affinity` для перевірки гіпотези | `speedup.py`, n = 2·10⁷, 5 вимірів: Sp₂ = 1,85, Sp₄ = 3,04 (Ep₄ = 0,76); профіль py-spy, гіпотеза й повторний вимір — нижче |
+| О2.4 Ядро. Спільна сума | `mode`: `none` — `ctx.RawValue`, `+=` без блокування; `lock` — `ctx.Value` під блокуванням; `local` — локальні суми | `shared_sum.py`, 4 процеси, 40 000 додавань: `none` втрачає 1,3–1,4 % оновлень (результат поза допуском), `lock` і `local` — у межах допуску (3·10⁻¹⁴) |
 | Д2.2 Екстраполяція Річардсона | `richardson: true` — додатковий розрахунок із 2n, R = (2ᵖ·I(2n) − I(n)) / (2ᵖ − 1) | для Q(t) (середні прямокутники) похибка Річардсона ~10⁻¹³ уже за n = 8 (розклад похибки для кубічної Q має лише член h²); для sin(t) (Сімпсон, p = 4) — з 1,7·10⁻⁵ до 1,3·10⁻¹⁵ |
 | Д2.4 Порядок сумування | `order`: `naive` — один послідовний ланцюжок, `pairwise` — блоки по 64 + попарне об'єднання, `kahan` — компенсоване | Сімпсон на Q(t) (похибка методу 0), n = 2·10⁶…1,6·10⁷: naive — відносна похибка 0,9–3,2·10⁻¹⁴, pairwise і kahan — 0…1,6·10⁻¹⁶ |
 | Д2.5 Паралельна гістограма | `GET /v1/histogram`: запізнення пацієнта `late_minutes(seed, i)` залежить від номера пацієнта, а не процесу; локальні словники об'єднуються наприкінці | `extras.py`, 2·10⁶ пацієнтів: гістограми для 1, 2, 4 процесів точно дорівнюють послідовному розрахунку в скрипті; час 2,34 → 0,75 с |
-| Д2.6 Скасування | `"async": true` → 202; `DELETE /v1/compute/{id}` ставить `Event`; частини перевіряють його між порціями | `extras.py`: n = 3·10⁸ на 4 процесах, через 1 с DELETE — `active_parts` = 0 через **0,009 с**, стан `cancelled`, `result` = null |
+| Д2.6 Скасування | `"async": true` → 202; `DELETE /v1/compute/{id}` ставить `Event`; частини перевіряють його між порціями | `extras.py`: n = 3·10⁸ на 4 процесах, через 1 с DELETE — `active_parts` = 0 через 0,009 с, стан `cancelled`, `result` = null |
 
-**Прискорення (О2.3).** Середовище: Intel Core i5-12400F — **6 фізичних ядер / 12 логічних**; Docker Desktop
-(WSL2) бачить 12 логічних процесорів парами потоків одного ядра (0–1, 2–3, …). Задача: середні прямокутники,
-n = 2·10⁷, режим `local`, порція 10 000, `start_method = forkserver`; прогрівальний запуск не враховано.
-Вимірюваний час Tp — повний `wall_s` у сервісі: створення процесів, їхній запуск (імпорт легкого модуля),
-обчислення, передавання результатів через чергу, `join` і об'єднання (дані на вхід — лише параметри).
+### DPC ЛР3. Розподілена обробка в Ray і відновлення
 
-| p | медіана Tp, с | розкид (min–max), с | Sp | Ep | запуск / обчислення / збирання, с |
-|---|---|---|---|---|---|
-| 1 | 2,259 | 2,182–2,448 | 1,00 | 1,00 | 0,012 / 2,245 / 0,002 |
-| 2 | 1,223 | 1,199–1,282 | 1,85 | 0,92 | 0,013 / 1,208 / 0,002 |
-| 4 | 0,742 | 0,684–0,764 | 3,04 | 0,76 | 0,019 / 0,722 / 0,001 |
-
-*Профіль* (`py-spy record --subprocesses`, p = 4, [DPC/results/lab2/profile/](DPC/results/lab2/profile/)):
-процеси-частини 99,3 % вибірок у `portion_sum` (з них 34 % — виклик функції f), очікувань і синхронізації немає;
-у батьківському процесі — 14 вибірок (запуск процесів і читання черги). Отже, запуск і збирання (≈ 0,02 с)
-не пояснюють втрати: кожна з 4 частин рахує 0,72 с замість T1/4 = 0,56 с.
-
-*Гіпотеза:* планувальник ставить частини на два логічні потоки одного фізичного ядра, і вони ділять його
-обчислювальні блоки. *Зміна одного параметра:* `affinity = spread` — частина k закріплюється за логічним
-процесором 2k (окреме ядро); задача, n і точність ті самі, вимір без профайлера.
-
-| Прогін (p = 4) | медіана, с | розкид, с | Sp₄ | Ep₄ |
-|---|---|---|---|---|
-| без прив'язки | 0,742 | 0,684–0,764 | 3,04 | 0,76 |
-| без прив'язки, повтор | 0,723 | 0,717–0,909 | 3,09 | 0,77 |
-| `affinity = spread` | 0,725 | 0,664–0,778 | 3,14 | 0,79 |
-
-*Висновок:* різниця в межах розкиду між повторами — **гіпотезу не підтверджено**. Прив'язка всередині VM не
-закріплює процес за фізичним ядром хоста: віртуальні процесори WSL2 зіставляє з ядрами планувальник Windows.
-Імовірні причини Ep₄ ≈ 0,77: нижча частота процесора за навантаження кількох ядер (i5-12400F — до 4,4 ГГц на
-одному ядрі й близько 4,0 ГГц на всіх) і інші контейнери стенда на тих самих ядрах.
-
-Команди (із кореня, стек запущено): `python DPC/experiments/lab2/correctness.py`, `accuracy.py`, `speedup.py`
-(`--affinity spread --out DPC/results/lab2/speedup-spread`), `shared_sum.py`, `extras.py`; профіль —
-`docker compose exec api py-spy record --pid 1 --subprocesses --duration 4 --format raw --output /tmp/prof.txt`
-під час розрахунку, зведення — `python DPC/experiments/lab2/profile_summary.py <файл>`. Результати — `DPC/results/lab2/`.
-
-### ЛР2-ЛР6
-
-| Курс | ЛР | Стан |
+| Пункт | Де реалізовано | Перевірка та свідчення |
 |---|---|---|
-| Web | ЛР2 конкуренція й повторення | **виконано**: О2.1–О2.4, Д2.1–Д2.5, Д2.7 (розділ вище) |
-| Web | ЛР3 вхід і доступ; ЛР4 страхова, outbox, Kafka; ЛР5 WebSocket; ЛР6 типи прийому | заплановано |
-| DPC | ЛР2 паралельне інтегрування Q(t) | **виконано**: О2.1–О2.4, Д2.2, Д2.4–Д2.6 (розділ вище); вкладка ЛР2 у клієнті кол-центру |
-| DPC | ЛР3 Ray; ЛР4 Spark; ЛР5 потік `arrivals`; ЛР6 координатори | заплановано |
+| О3.1 Ядро. Виконання задач у Ray | [DPC/api/app/ray_tasks.py](DPC/api/app/ray_tasks.py): `@ray.remote(max_retries=3, retry_exceptions=False)` — повтор лише після системної відмови виконавця; задача перевіряє поліс і **публікує** ефект приймачу, ресурс не змінює. Ключ ефекту — `request_id`, аргумент задачі, тож однаковий у всіх спробах | `fault.py` A: після загибелі процесу Ray повторив задачу на іншому процесі (`first_worker …:980` → `last_worker …:1229`) з тим самим ключем |
+| О3.2 Межа незавершених задач | `_ray_dispatcher` у [DPC/api/app/booking.py](DPC/api/app/booking.py): подає задачу, лише поки незавершених < `IN_FLIGHT_LIMIT`; далі `ray.wait(num_returns=1)` — обробляє перший готовий результат, а не в порядку подання. Решта запитів чекає в черзі ЛР1; повна черга — 429. Метрики `ray_in_flight`, `ray_max_in_flight`, `ray_submitted` | `backpressure.py`: під навантаженням 12 клієнтів і повільним приймачем максимум незавершених задач = 8 (межа 8), подано задач рівно стільки, скільки прийнято запитів, черга — 50, надлишок — 429 |
+| О3.3 Ядро. Атомарне приймання ефекту | [DPC/api/app/receiver.py](DPC/api/app/receiver.py), таблиця `effect` ([migrations/004_effects.sql](migrations/004_effects.sql)), ключ `effect_key = request_id`. Одна транзакція: `INSERT … ON CONFLICT (effect_key) DO UPDATE deliveries + 1` (захист від повтору) → перша доставка: `take_slots()` + `booking` + рішення в `effect` і `booking_request`; повторна — збережене рішення | `receiver_check.py` **3/3 OK**: 12 одночасних доставок одного ефекту — 1 запис, +2 слоти, `deliveries = 12`, одна перша доставка; повторна доставка — `duplicate = true`, ресурс без змін; недійсний поліс — `rejected` і той самий при повторі |
+| О3.4 Ядро. Відмова після запису ефекту | `fault("after_effect_before_ack")` у задачі — після відповіді приймача, до повернення результату | `fault.py` **OK**. A: стан `done`, `deliveries = 2`, записів `booking` із цим `request_id` — 1, `slots_taken` +2 один раз, `fault.hit` у журналі вузла, інваріант виконано. B: відмова під час 30 одночасних запитів на 20 слотів — 20 `done`, 10 `rejected/no-free-slots`, `booked = slots_taken = 20`, один ефект доставлено двічі |
+| Д3.4 Повільний приймач і зворотний тиск | `RECEIVER_DELAY_MS` — пауза в приймачі | дві затримки за однакових інших умов — таблиця нижче |
+
+### DPC ЛР4. Пакетний звіт у Spark
+
+| Пункт | Де реалізовано | Перевірка та свідчення |
+|---|---|---|
+| | | |
+
+### DPC ЛР5. Потокова обробка, запізнення й відновлення
+
+| Пункт | Де реалізовано | Перевірка та свідчення |
+|---|---|---|
+| | | |
+
+### DPC ЛР6. Координація виконавців
+
+| Пункт | Де реалізовано | Перевірка та свідчення |
+|---|---|---|
+| | | |
 
 ## 7. Досліди
 
 Спільні умови: середовище з розд. 5; образи `project-web:dev`, `project-dpc-api:dev`; демодані з міграцій.
 
-| Дослід | Режим і команда (з кореня) | Що видно / результат |
+| Дослід | Режим і команда | Що видно / посилання на результат |
 |---|---|---|
 | Перевірка Web ЛР1 | `python web/experiments/lab1_check.py` | 23/23 OK - [web/results/lab1/summary.json](web/results/lab1/summary.json) |
 | Останній слот (Web О2.1) | `python web/experiments/lab2/race.py --mode protected` (і `conditional`) | 20 пацієнтів через app-a і app-b на 1 слот: 1 × 201, 19 × 409, інваріант виконано - `web/results/lab2/race-*/` |
 | Останній слот без захисту (Web О2.1) | `python web/experiments/lab2/race.py --mode unprotected --gap-ms 50` | 20 × 201 на 1 слот, `invariant_ok=false` (тестовий день `web-race-unprotected`) |
 | Ідемпотентність і ліміт (Web О2.2, Д2.1) | `python web/experiments/lab2/idempotency_check.py`; `in_progress.py` | 10/10 OK; 409 «ключ обробляється» з `Retry-After` - `web/results/lab2/idempotency/`, `in-progress/` |
 | Втрачена відповідь (Web О2.3) | `python web/experiments/lab2/lost_response.py` | обрив після COMMIT, повтор через app-b - той самий 201, запис один - `web/results/lab2/lost-response/` |
-| Повтори в клієнті (Web О2.4) | `python web/experiments/lab2/client_retry.py` | браузер: спроба 2 → збережений результат; сервер недоступний → «Результат невідомий» → після запуску 201, запис один - `web/results/lab2/client-retry/` (зі знімками) |
-| Два способи захисту (Web Д2.2) | `python web/experiments/lab2/compare.py --rounds 5` | 100 → 50 слотів: блокування рядка 312 мс / p95 292 мс, умовний запис 308 мс / p95 293 мс - `web/results/lab2/compare/` |
-| План запиту (Web Д2.7) | `python web/experiments/lab2/explain.py` | 10⁵ записів: `Seq Scan` 8,0 мс → `Index Scan` 0,19 мс - `web/results/lab2/explain/` |
-| **Два канали на один день** (спільний) | скидання `experiments/joint/reset.sql`, потім `python experiments/joint/both_channels.py` | 5 записів сайту + 20 запитів кол-центру на 10 слотів: зайнято рівно 10, `invariant_ok=true` - [experiments/joint/results/summary.json](experiments/joint/results/summary.json) |
+| Повтори в клієнті (Web О2.4) | `python web/experiments/lab2/client_retry.py` | браузер: спроба 2 → збережений результат; сервер недоступний «Результат невідомий» → після запуску 201, запис один - `web/results/lab2/client-retry/`|
+| Два способи захисту (Web Д2.2) | `python web/experiments/lab2/compare.py --rounds 5` | 100 - 50 слотів: блокування рядка 312 мс / p95 292 мс, умовний запис 308 мс / p95 293 мс - `web/results/lab2/compare/` |
+| План запиту (Web Д2.7) | `python web/experiments/lab2/explain.py` | 10⁵ записів: `Seq Scan` 8,0 мс `Index Scan` 0,19 мс - `web/results/lab2/explain/` |
+| Два канали на один день (спільний) | скидання `experiments/joint/reset.sql`, потім `python experiments/joint/both_channels.py` | 5 записів сайту + 20 запитів кол-центру на 10 слотів: зайнято рівно 10, `invariant_ok=true` - [experiments/joint/results/summary.json](experiments/joint/results/summary.json) |
 | Заповнена черга (DPC О1.2, О1.3, О1.5) | `RESOURCE_MODE=locked`; `python DPC/experiments/lab1/queue_full.py --clients 16 --seconds 30 --out DPC/results/lab1/queue-full` | черга ≤ 50, 429 з `Retry-After`, p95 `/health` 3,8 мс - `DPC/results/lab1/queue-full/` |
 | Гонка за слоти, із захистом (DPC О1.4) | `RESOURCE_MODE=locked CS_GAP_MS=50`; скидання, `python DPC/experiments/lab1/race.py --doctor-day race-locked --out DPC/results/lab1/race-locked` | 20 / 20, `invariant_ok=true` |
 | Гонка за слоти, без захисту (DPC О1.4) | `RESOURCE_MODE=unprotected CS_GAP_MS=50`; скидання, `race.py --doctor-day race-unprotected` | 32 `done` на 20 слотів, `invariant_ok=false` |
@@ -383,6 +320,9 @@ n = 2·10⁷, режим `local`, порція 10 000, `start_method = forkserve
 | Точність і порядок (DPC О2.2, Д2.2, Д2.4) | `python DPC/experiments/lab2/accuracy.py` | e(n)/e(2n) = 4 (прямокутники, трапеції), 16 (Сімпсон на sin); Сімпсон точний для Q - `DPC/results/lab2/accuracy/` |
 | Прискорення (DPC О2.3) | `python DPC/experiments/lab2/speedup.py`; `--affinity spread` | Sp₄ = 3,04 / 3,09; з прив'язкою 3,14 - гіпотезу не підтверджено - `DPC/results/lab2/speedup*/` |
 | Спільна сума (DPC О2.4) | `python DPC/experiments/lab2/shared_sum.py` | `none` втрачає 1,3–1,4 % оновлень; `lock`, `local` - у допуску - `DPC/results/lab2/shared-sum/` |
+| Відмова після запису ефекту (DPC О3.1, О3.4) | `EXECUTION=ray`; `python DPC/experiments/lab3/fault.py` | повтор задачі Ray: `deliveries = 2`, один запис, інваріант виконано; 30 запитів на 20 слотів під час відмови - рівно 20 - `DPC/results/lab3/fault/` |
+| Атомарний приймач (DPC О3.3) | `python DPC/experiments/lab3/receiver_check.py` | 12 одночасних доставок - один ефект; повтор - збережене рішення - `DPC/results/lab3/receiver/` |
+| Межа задач і зворотний тиск (DPC О3.2, Д3.4) | `python DPC/experiments/lab3/backpressure.py --delays 200,1000` | ≤ 8 незавершених задач; 10,6 проти 5,1 запиту/с, p95 5,7 проти 11,4 с, 429 - 94,7 проти 96,9 % - `DPC/results/lab3/backpressure/` |
 | Гістограма й скасування (DPC Д2.5, Д2.6) | `python DPC/experiments/lab2/extras.py` | гістограми 1/2/4 процесів = послідовній; скасування за 0,009 с - `DPC/results/lab2/extras/` |
 
 Скидання тестових ресурсів DPC перед кожним `race.py`: `docker compose exec -T postgres psql -U app -d app < DPC/experiments/lab1/reset.sql`
@@ -392,7 +332,7 @@ n = 2·10⁷, режим `local`, порція 10 000, `start_method = forkserve
 
 | Поле | Зміст |
 |---|---|
-| Твердження | Якщо процес упав після фіксації, але до відповіді, повтор із тим самим ключем через інший екземпляр повертає збережений результат, а предметна зміна виконана один раз |
+| Пункт і твердження | Якщо процес упав після фіксації, але до відповіді, повтор із тим самим ключем через інший екземпляр повертає збережений результат, а предметна зміна виконана один раз |
 | Відтворення | `docker compose exec app-a touch /faults/after_commit_before_response` (робить скрипт); новий пацієнт `POST /v1/bookings` (2 слоти дня `web-retry`) з ключем K напряму на app-a; той самий запит із K на app-b; після перезапуску app-a - ще раз на app-a |
 | Вимірювання | спроба 1 - з'єднання обірвано (статус 0), у журналі app-a `fault.hit`, у базі вже 1 запис і `slots_taken = 2`; спроба 2 (app-b) - 201, той самий `id`, `Idempotent-Replayed: true`; спроба 3 (app-a після перезапуску) - те саме; записів пацієнта - 1, `slots_taken` зріс на 2 один раз |
 | Відновлення стану | файл відмови прибирається під час спрацювання (одна відмова на один файл); Docker перезапускає app-a (`restart: unless-stopped`); тестовий день скидає скрипт (`reset_day`) або `web/experiments/reset_web.sql` |
@@ -418,8 +358,7 @@ n = 2·10⁷, режим `local`, порція 10 000, `start_method = forkserve
 | Свідчення | `DPC/results/lab1/queue-full/summary.json`, `requests.csv`, `health.csv`, `queue.csv`, `timing.csv` |
 | Висновок | Черга не перевищує місткості, перевантаження одразу дає 429. Виміряно час HTTP-відповіді `/health`, а не час виконання запиту на запис |
 
-Інтервали О1.5 (монотонний годинник сервера, мс). Вибірка - **усі 288 прийнятих запитів прогону** (поле `timing`
-у `GET /v1/booking-requests/{id}` → `summary.json → timing_this_run_ms`); `/metrics → timing_ms` - останні 2000
+Інтервали О1.5 (монотонний годинник сервера, мс). Вибірка - усі 288 прийнятих запитів прогону (поле `timing` у `GET /v1/booking-requests/{id}` → `summary.json → timing_this_run_ms`); `/metrics → timing_ms` - останні 2000
 завершених запитів процесу.
 
 | Інтервал | Від → до | p50 | p95 | p99 |
@@ -458,6 +397,11 @@ n = 2·10⁷, режим `local`, порція 10 000, `start_method = forkserve
 - До ЛР3 користувача визначає заголовок `X-User-Id` без пароля - це навчальне припущення методички, не захист.
 - **Спільний дослід** показав узгодженість каналів за одного запуску з 25 одночасними запитами; він не охоплює
   відмов бази чи мережі між частинами.
+- **DPC ЛР3.** Повтор перевірено для відмови одного виконавця за раз (вузли Ray у контейнерах на одній машині);
+  відмова цілого вузла чи `ray-head` не досліджувалась (Д6.4). Якщо всі `max_retries = 3` спроби загинуть після
+  публікації, рішення вже записане приймачем - запит лишиться `done`/`rejected`; якщо до публікації - `failed`.
+  Черга й незавершені задачі живуть у процесі `api`: після його аварії задачі в Ray доробляються й публікують
+  ефекти, але облік часу втрачається.
 - **DPC ЛР2.** Прискорення виміряно на одній машині (6 ядер) у VM Docker Desktop з іншими контейнерами стенда;
   числа не переносяться автоматично на інше залізо. Розрахунок виконується в процесах контейнера `api`
   (не в Ray - це ЛР3); одночасно виконується один розрахунок. Асинхронні завдання зберігаються в пам'яті процесу
@@ -471,7 +415,7 @@ n = 2·10⁷, режим `local`, порція 10 000, `start_method = forkserve
 
 | Учасник | Реалізовані пункти й виконані досліди |
 |---|---|
-| Шабалов | Web ЛР1 , Web ЛР2 , DPC ЛР1 , DPC ЛР2  |
+| Шабалов | Web ЛР1 , Web ЛР2 , DPC ЛР1 , DPC ЛР2 , DPC ЛР3  |
 
 ### Використані бібліотеки
 
@@ -485,6 +429,8 @@ n = 2·10⁷, режим `local`, порція 10 000, `start_method = forkserve
 | PostgreSQL 17 + pgcrypto | спільний ресурс, обмеження, функція правила, bcrypt-хеші паролів демоданих | `migrations/` |
 | nginx | балансування `least_conn` між `app-a` і `app-b` | `web/configs/nginx/` |
 | `asyncio` | обмежена черга й обробники DPC | `DPC/api/app/booking.py` |
+| Ray 2.59 (клієнт `ray://`) | задачі з повтором після відмови виконавця, `ray.wait` для межі незавершених задач (DPC ЛР3) | `DPC/api/app/ray_tasks.py`, `booking.py` |
+| httpx | публікація ефекту з задачі Ray приймачу | `DPC/api/app/ray_tasks.py` |
 | Redis 8 (`redis.asyncio`) | спільний для екземплярів лічильник ліміту частоти (Д2.1) | `web/server/app/ratelimit.py` |
 | Playwright + Microsoft Edge | перевірка повторів у реальному браузері (О2.4) | `web/experiments/lab2/client_retry.py` |
 | Redocly CLI 1.34.5 | лінтер контракту Web (О1.3) | `npx @redocly/cli@1.34.5 lint web/openapi.yaml` |

@@ -70,6 +70,18 @@ paths:
                   rejected:
                     type: integer
                     description: Відмови 429 (черга повна)
+                  execution:
+                    type: string
+                    description: ray — задачі Ray (ЛР3), local — пул ЛР1
+                  in_flight_limit:
+                    type: integer
+                  ray_in_flight:
+                    type: integer
+                    description: Незавершені задачі Ray зараз (≤ in_flight_limit)
+                  ray_max_in_flight:
+                    type: integer
+                  ray_submitted:
+                    type: integer
                   outcomes:
                     type: object
                     additionalProperties:
@@ -199,6 +211,80 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /internal/v1/effects:
+    post:
+      operationId: receiveEffect
+      summary: "ЛР3: приймач ефекту задач Ray (внутрішній маршрут; викликає задача, а не клієнт)"
+      description: |
+        Атомарне приймання ефекту «зайняття слоту» з ключем effect_key = request_id. В одній транзакції:
+        INSERT … ON CONFLICT (effect_key) DO UPDATE deliveries = deliveries + 1 (захист від повтору), для першої
+        доставки — take_slots() і запис booking (зміна ресурсу) та рішення; повторна доставка повертає збережене
+        рішення (duplicate = true) без зміни ресурсу.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - effect_key
+                - doctor_day_id
+                - patient_id
+                - slots
+                - policy_ok
+              properties:
+                effect_key:
+                  type: string
+                doctor_day_id:
+                  type: string
+                patient_id:
+                  type: string
+                slots:
+                  type: integer
+                  minimum: 1
+                  maximum: 2
+                policy_ok:
+                  type: boolean
+                worker:
+                  type: string
+            examples:
+              normal:
+                value:
+                  effect_key: "req-{uuid}"
+                  doctor_day_id: dd-main
+                  patient_id: "p-{uuid}"
+                  slots: 1
+                  policy_ok: true
+      responses:
+        "200":
+          description: Рішення (нове або збережене)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  effect_key:
+                    type: string
+                  decision:
+                    type: string
+                    enum:
+                      - done
+                      - rejected
+                  reason:
+                    type:
+                      - string
+                      - "null"
+                  booking_id:
+                    type:
+                      - string
+                      - "null"
+                  deliveries:
+                    type: integer
+                  duplicate:
+                    type: boolean
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /v1/compute:
     post:
       operationId: startCompute

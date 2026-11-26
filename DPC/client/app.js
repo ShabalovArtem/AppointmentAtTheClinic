@@ -34,7 +34,7 @@ async function into(pre, method, path, body) {
     }
 }
 
-// ------------------------------------------------------------------ header: token, API status, tabs
+// header: token, API status, tabs
 
 const token = $("token");
 token.value = getToken();
@@ -67,7 +67,7 @@ function openTab(name) {
 }
 for (const tab of tabs) tab.onclick = () => openTab(tab.dataset.tab);
 
-// ------------------------------------------------------------------ ЛР1: запис, черга, ресурс
+// ЛР1: запис, черга, ресурс
 
 const requests = new Map(); // request_id -> останній відомий стан
 const MAX_ROWS = 300;
@@ -246,7 +246,7 @@ async function refreshMetrics() {
     } catch { /* статус API показує шапка */ }
 }
 
-// ------------------------------------------------------------------ ЛР2: розрахунок і гістограма
+// ЛР2: розрахунок і гістограма
 
 let computeId = null;
 
@@ -297,7 +297,7 @@ $("l2-hist").onclick = async () => {
     }
 };
 
-// ------------------------------------------------------------------ ЛР3
+// ЛР3
 
 $("l3-check").onclick = async () => {
     try {
@@ -311,10 +311,15 @@ $("l3-check").onclick = async () => {
 $("l3-metrics").onclick = async () => {
     await refreshMetrics();
     const m = metricsCache ?? {};
-    showJson($("l3-out"), {in_flight: m.in_flight, queue_length: m.queue_length, processing: m.processing, execution: m.execution ?? "local"});
+    showJson($("l3-out"), {
+        execution: m.execution ?? "local",
+        ray_in_flight: m.ray_in_flight, in_flight_limit: m.in_flight_limit, ray_max_in_flight: m.ray_max_in_flight,
+        ray_submitted: m.ray_submitted, queue_length: m.queue_length, queue_capacity: m.queue_capacity,
+        rejected_429: m.rejected, outcomes: m.outcomes,
+    });
 };
 
-// ------------------------------------------------------------------ ЛР4: звіт і еталон
+// ЛР4: звіт і еталон
 
 const reportKey = (row) => `${row.doctor_id}|${row.weekday ?? row.day_of_week}`;
 
@@ -363,7 +368,7 @@ $("l4-compare").onclick = async () => {
     }
 };
 
-// ------------------------------------------------------------------ ЛР5: панель
+// ЛР5: панель
 
 const windowKey = (w) => `${w.doctor_id}|${w.window_start}`;
 function renderWindows(windows) {
@@ -390,7 +395,7 @@ $("l5-compare").onclick = async () => {
     }
 };
 
-// ------------------------------------------------------------------ ЛР6: координатор
+// ЛР6: координатор
 
 async function refreshCoordinator() {
     try {
@@ -406,7 +411,7 @@ $("l6-coord").onclick = refreshCoordinator;
 $("l6-history").onclick = () => into($("l6-out"), "GET", "/v1/history");
 $("l6-check").onclick = () => into($("l6-out"), "GET", "/v1/history/check");
 
-// ------------------------------------------------------------------ старт і таймери
+// старт і таймери
 
 let savedTab = location.hash.slice(1) || "lab1";
 if (!location.hash) {

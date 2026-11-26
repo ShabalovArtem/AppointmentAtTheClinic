@@ -61,7 +61,7 @@ export async function call(method, path, {body, idempotencyKey, headers = {}} = 
     return {status: reply.status, headers: reply.headers, data};
 }
 
-// ------------------------------------------------------------------ О2.4: повторні спроби з тим самим ключем
+// О2.4: повторні спроби з тим самим ключем
 
 /** Результат змінювального запиту встановити не вдалося: він міг виконатися або ні. */
 export class UnknownOutcome extends Error {
