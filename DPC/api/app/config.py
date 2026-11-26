@@ -39,6 +39,9 @@ SLOW_MAX_MS = _int("SLOW_MAX_MS", 800)
 CS_GAP_MS = _int("CS_GAP_MS", 0)
 RETRY_AFTER_S = _int("RETRY_AFTER_S", 1)  # Retry-After of 429 when the queue is full (O1.2)
 DRAIN_TIMEOUT_S = _float("DRAIN_TIMEOUT_S", 100.0)  # how long the shutdown waits for the queue
+# lab 2: parallel integration
+COMPUTE_START_METHOD = os.environ.get("COMPUTE_START_METHOD", "forkserver")  # forkserver | fork | spawn (O2.3)
+COMPUTE_TOLERANCE = _float("COMPUTE_TOLERANCE", 1e-6)  # relative tolerance against the reference (O2.1)
 EXECUTION = os.environ.get("EXECUTION", "local")  # local | ray (lab 3)
 IN_FLIGHT_LIMIT = _int("IN_FLIGHT_LIMIT", 8)  # O3.2
 RECEIVER_DELAY_MS = _int("RECEIVER_DELAY_MS", 0)  # D3.4

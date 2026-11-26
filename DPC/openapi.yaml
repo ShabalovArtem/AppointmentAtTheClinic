@@ -202,42 +202,108 @@ paths:
   /v1/compute:
     post:
       operationId: startCompute
-      summary: Розрахунок ЛР2
+      summary: "ЛР2: паралельне інтегрування Q(t) = amp·t²·(T − t) — людино-години очікування в черзі реєстратури"
+      description: |
+        Проміжок [a, b] ділиться на n частин; одиниці сітки (n, для Сімпсона n/2) розподіляються на `workers`
+        суцільних діапазонів без пропусків і перекриття; кожен процес рахує локальну суму порціями по `chunk`;
+        батьківський процес об'єднує результати. Відповідь містить значення, еталон (через первісну),
+        похибку, межу похибки методу, оцінку похибки округлення, час і його складові, кількість процесів.
+        Синхронно — 200 з кінцевим станом; з `"async": true` — 202 і Location для GET/DELETE.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required:
-                - a
-                - b
-                - n
-                - workers
+              additionalProperties: false
               properties:
                 a:
                   type: number
+                  default: 0
+                  description: Початок проміжку, год від відкриття
                 b:
                   type: number
+                  default: 12
                 n:
                   type: integer
-                  minimum: 1
-                  description: Кількість частин поділу проміжку
+                  minimum: 2
+                  maximum: 500000000
+                  default: 1000000
+                  description: Кількість частин поділу (для Сімпсона — парна)
                 workers:
                   type: integer
-                  enum:
-                    - 1
-                    - 2
-                    - 4
+                  minimum: 1
+                  maximum: 16
+                  default: 1
                 method:
                   type: string
                   enum:
                     - midpoint
                     - trapezoid
                     - simpson
+                  default: midpoint
                 order:
                   type: string
-                  description: Порядок сумування
+                  enum:
+                    - naive
+                    - pairwise
+                    - kahan
+                  default: naive
+                  description: Спосіб сумування (Д2.4)
+                mode:
+                  type: string
+                  enum:
+                    - local
+                    - lock
+                    - none
+                  default: local
+                  description: Спільна сума (О2.4) — локальні суми, спільна з блокуванням, спільна без синхронізації
+                chunk:
+                  type: integer
+                  minimum: 1
+                  default: 10000
+                  description: Одиниць у порції; між порціями — додавання до спільної суми й перевірка скасування
+                start_method:
+                  type: string
+                  enum:
+                    - forkserver
+                    - fork
+                    - spawn
+                  default: forkserver
+                affinity:
+                  type: string
+                  enum:
+                    - none
+                    - spread
+                  default: none
+                  description: spread — частина k на логічний процесор 2k (окреме фізичне ядро), дослід О2.3
+                function:
+                  type: string
+                  enum:
+                    - queue
+                    - sin
+                    - exp
+                  default: queue
+                  description: queue — функція картки; sin, exp — тестові функції для порядку збіжності (О2.2)
+                amp:
+                  type: number
+                  default: 0.1
+                T:
+                  type: number
+                  default: 12
+                patients:
+                  type: integer
+                  minimum: 1
+                  default: 400
+                  description: Пацієнтів за день — для середнього часу в черзі за формулою Літтла
+                richardson:
+                  type: boolean
+                  default: false
+                  description: Д2.2 — додатковий розрахунок із 2n та екстраполяція Річардсона
+                async:
+                  type: boolean
+                  default: false
+                  description: Д2.6 — асинхронний розрахунок зі скасуванням
             examples:
               normal:
                 value:
@@ -245,9 +311,24 @@ paths:
                   b: 12
                   n: 20000000
                   workers: 4
+                  method: midpoint
+                  order: naive
+              async:
+                value:
+                  a: 0
+                  b: 12
+                  n: 300000000
+                  workers: 4
+                  async: true
       responses:
+        "200":
+          description: Розрахунок виконано (синхронний режим)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComputeJob"
         "202":
-          description: Розрахунок прийнято
+          description: Розрахунок прийнято (асинхронний режим)
           headers:
             Location:
               schema:
@@ -269,7 +350,7 @@ paths:
           type: string
     get:
       operationId: getCompute
-      summary: Стан і результат розрахунку
+      summary: Стан і результат розрахунку; active_parts — скільки частин ще рахує
       responses:
         "200":
           description: Стан
@@ -277,11 +358,13 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ComputeJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
       operationId: cancelCompute
-      summary: Скасування розрахунку
+      summary: "Д2.6: скасування — частини перевіряють сигнал між порціями, результат не видається"
       responses:
         "202":
           description: Скасування прийнято
@@ -289,19 +372,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ComputeJob"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
   /v1/histogram:
     get:
       operationId: getHistogram
-      summary: Паралельна гістограма предметної величини
+      summary: "Д2.5: паралельна гістограма запізнень пацієнтів (хв) — локальні словники об'єднуються наприкінці"
+      parameters:
+        - name: n
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1000000
+          description: Кількість пацієнтів
+        - name: workers
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 16
+            default: 4
+        - name: seed
+          in: query
+          schema:
+            type: integer
+            default: 42
+          description: Зерно; значення залежить від номера пацієнта, а не процесу
       responses:
         "200":
-          description: Гістограма
+          description: Гістограма (кошики 0, 1-5, …, 56-60, 61+ хв)
           content:
             application/json:
               schema:
                 type: object
+                required:
+                  - histogram
+                properties:
+                  histogram:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  n:
+                    type: integer
+                  workers:
+                    type: integer
+                  seed:
+                    type: integer
+                  wall_s:
+                    type: number
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /v1/reports/main/refresh:
     post:
@@ -554,6 +677,7 @@ components:
         state:
           type: string
           enum:
+            - queued
             - running
             - done
             - cancelled
@@ -573,10 +697,31 @@ components:
               type: number
             error:
               type: number
+            relative_error:
+              type: number
+            tolerance:
+              type: number
+            within_tolerance:
+              type: boolean
+            method_error_bound:
+              type: number
+            rounding_error_bound:
+              type: number
             wall_s:
               type: number
             workers:
               type: integer
+            avg_wait_min:
+              type: number
+              description: Середній час у черзі = інтеграл / пацієнтів (формула Літтла)
+            timing:
+              type: object
+              description: spawn_s, start_s, compute_s, collect_merge_s, parts[]
+            lost_update:
+              type: object
+              description: Для mode lock/none — очікувана сума, підсумок спільної змінної, втрачена частка
+            richardson:
+              type: object
   responses:
     BadRequest:
       description: Некоректний запит

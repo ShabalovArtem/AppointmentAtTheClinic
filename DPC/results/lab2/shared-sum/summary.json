@@ -1,0 +1,119 @@
+{
+  "n": 4000000,
+  "workers": 4,
+  "chunk": 100,
+  "modes": {
+    "none": {
+      "runs": [
+        {
+          "value": 170.38440657227284,
+          "relative_error": 0.013979128632680405,
+          "within_tolerance": false,
+          "wall_s": 0.174526,
+          "lost_update": {
+            "expected": 172.80000000000598,
+            "shared": 170.38440657227284,
+            "lost_value": 2.415593427733138,
+            "lost_share": 0.013979128632714437
+          }
+        },
+        {
+          "value": 170.62212344406487,
+          "relative_error": 0.012603452291291334,
+          "within_tolerance": false,
+          "wall_s": 0.17207,
+          "lost_update": {
+            "expected": 172.80000000000598,
+            "shared": 170.62212344406487,
+            "lost_value": 2.1778765559410975,
+            "lost_share": 0.01260345229132536
+          }
+        },
+        {
+          "value": 170.4501017083072,
+          "relative_error": 0.013598948447296436,
+          "within_tolerance": false,
+          "wall_s": 0.165911,
+          "lost_update": {
+            "expected": 172.80000000000598,
+            "shared": 170.4501017083072,
+            "lost_value": 2.3498982916987985,
+            "lost_share": 0.01359894844733054
+          }
+        }
+      ],
+      "median_wall_s": 0.17207,
+      "all_within_tolerance": false
+    },
+    "lock": {
+      "runs": [
+        {
+          "value": 172.80000000000555,
+          "relative_error": 3.2073109600282297e-14,
+          "within_tolerance": true,
+          "wall_s": 0.22598,
+          "lost_update": {
+            "expected": 172.80000000000598,
+            "shared": 172.80000000000555,
+            "lost_value": 4.2468309402465823e-13,
+            "lost_share": 2.4576567941240946e-15
+          }
+        },
+        {
+          "value": 172.80000000000533,
+          "relative_error": 3.0757289719245074e-14,
+          "within_tolerance": true,
+          "wall_s": 0.184955,
+          "lost_update": {
+            "expected": 172.80000000000598,
+            "shared": 172.80000000000533,
+            "lost_value": 6.482005119323731e-13,
+            "lost_share": 3.751160369978881e-15
+          }
+        },
+        {
+          "value": 172.80000000000547,
+          "relative_error": 3.1579677144893337e-14,
+          "within_tolerance": true,
+          "wall_s": 0.186391,
+          "lost_update": {
+            "expected": 172.80000000000598,
+            "shared": 172.80000000000547,
+            "lost_value": 5.140900611877441e-13,
+            "lost_share": 2.9750582244660092e-15
+          }
+        }
+      ],
+      "median_wall_s": 0.186391,
+      "all_within_tolerance": true
+    },
+    "local": {
+      "runs": [
+        {
+          "value": 172.80000000000598,
+          "relative_error": 3.454027187722709e-14,
+          "within_tolerance": true,
+          "wall_s": 0.167782,
+          "lost_update": null
+        },
+        {
+          "value": 172.80000000000598,
+          "relative_error": 3.454027187722709e-14,
+          "within_tolerance": true,
+          "wall_s": 0.184689,
+          "lost_update": null
+        },
+        {
+          "value": 172.80000000000598,
+          "relative_error": 3.454027187722709e-14,
+          "within_tolerance": true,
+          "wall_s": 0.166572,
+          "lost_update": null
+        }
+      ],
+      "median_wall_s": 0.167782,
+      "all_within_tolerance": true
+    }
+  },
+  "ok": true
+}

@@ -271,9 +271,12 @@ $("l2-run").onclick = async () => {
     $("l2-summary").innerHTML = r ? `<div class="stats" style="margin-bottom:12px">
         <div class="stat"><b>${Number(r.value).toPrecision(10)}</b><small>значення</small></div>
         <div class="stat"><b>${Number(r.reference).toPrecision(10)}</b><small>еталон</small></div>
-        <div class="stat ${Math.abs(r.error) < 1e-6 ? "ok" : "bad"}"><b>${Number(r.error).toExponential(2)}</b><small>похибка</small></div>
+        <div class="stat ${r.within_tolerance ? "ok" : "bad"}"><b>${Number(r.relative_error).toExponential(2)}</b><small>відн. похибка (допуск ${r.tolerance})</small></div>
         <div class="stat"><b>${fmt(r.wall_s)}</b><small>час, с</small></div>
-        <div class="stat"><b>${fmt(r.workers)}</b><small>процесів</small></div></div>` : "";
+        <div class="stat"><b>${fmt(r.workers)}</b><small>процесів</small></div>
+        ${r.avg_wait_min !== undefined ? `<div class="stat"><b>${Number(r.avg_wait_min).toFixed(1)} хв</b><small>сер. час у черзі (Літтл)</small></div>` : ""}
+        ${r.lost_update ? `<div class="stat ${r.lost_update.lost_share > 0 ? "bad" : "ok"}"><b>${(100 * r.lost_update.lost_share).toFixed(2)} %</b><small>втрачено оновлень</small></div>` : ""}
+        </div>` : "";
 };
 
 $("l2-cancel").onclick = () => computeId && into($("l2-out"), "DELETE", `/v1/compute/${encodeURIComponent(computeId)}`);

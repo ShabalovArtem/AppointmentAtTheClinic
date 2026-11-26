@@ -1,0 +1,123 @@
+{
+  "n": 1000000,
+  "rows": [
+    {
+      "method": "midpoint",
+      "reference": 172.8,
+      "tolerance": 1e-06,
+      "spread_between_p_rel": 3.289549702593056e-16,
+      "by_workers": {
+        "1": {
+          "value": 172.80000000008638,
+          "relative_error": 4.998470773090149e-13,
+          "within_tolerance": true,
+          "wall_s": 0.125072,
+          "units_per_part": [
+            1000000
+          ]
+        },
+        "2": {
+          "value": 172.8000000000864,
+          "relative_error": 5.000115547941445e-13,
+          "within_tolerance": true,
+          "wall_s": 0.083751,
+          "units_per_part": [
+            500000,
+            500000
+          ]
+        },
+        "4": {
+          "value": 172.80000000008644,
+          "relative_error": 5.001760322792742e-13,
+          "within_tolerance": true,
+          "wall_s": 0.054234,
+          "units_per_part": [
+            250000,
+            250000,
+            250000,
+            250000
+          ]
+        }
+      }
+    },
+    {
+      "method": "trapezoid",
+      "reference": 172.8,
+      "tolerance": 1e-06,
+      "spread_between_p_rel": 3.289549702593056e-16,
+      "by_workers": {
+        "1": {
+          "value": 172.79999999982718,
+          "relative_error": 1.0001875870734188e-12,
+          "within_tolerance": true,
+          "wall_s": 0.152388,
+          "units_per_part": [
+            1000000
+          ]
+        },
+        "2": {
+          "value": 172.79999999982724,
+          "relative_error": 9.998586321031594e-13,
+          "within_tolerance": true,
+          "wall_s": 0.091167,
+          "units_per_part": [
+            500000,
+            500000
+          ]
+        },
+        "4": {
+          "value": 172.7999999998272,
+          "relative_error": 1.000023109588289e-12,
+          "within_tolerance": true,
+          "wall_s": 0.072692,
+          "units_per_part": [
+            250000,
+            250000,
+            250000,
+            250000
+          ]
+        }
+      }
+    },
+    {
+      "method": "simpson",
+      "reference": 172.8,
+      "tolerance": 1e-06,
+      "spread_between_p_rel": 3.289549702593056e-16,
+      "by_workers": {
+        "1": {
+          "value": 172.80000000000007,
+          "relative_error": 3.289549702593056e-16,
+          "within_tolerance": true,
+          "wall_s": 0.203073,
+          "units_per_part": [
+            500000
+          ]
+        },
+        "2": {
+          "value": 172.8000000000001,
+          "relative_error": 4.934324553889584e-16,
+          "within_tolerance": true,
+          "wall_s": 0.095562,
+          "units_per_part": [
+            250000,
+            250000
+          ]
+        },
+        "4": {
+          "value": 172.80000000000013,
+          "relative_error": 6.579099405186112e-16,
+          "within_tolerance": true,
+          "wall_s": 0.064429,
+          "units_per_part": [
+            125000,
+            125000,
+            125000,
+            125000
+          ]
+        }
+      }
+    }
+  ],
+  "ok": true
+}

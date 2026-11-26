@@ -1,0 +1,25 @@
+samples by process kind: {'part': 700, 'parent': 14}
+
+== part (700 samples)
+  inclusive run_part                                    700  100.0 %
+  inclusive _bootstrap                                  700  100.0 %
+  inclusive import                                      700  100.0 %
+  inclusive portion_sum                                 695   99.3 %
+  inclusive <lambda>                                    236   33.7 %
+  leaf      portion_sum                                 459   65.6 %
+  leaf      <lambda>                                    236   33.7 %
+
+== parent (14 samples)
+  inclusive import                                        6   42.9 %
+  inclusive _run                                          5   35.7 %
+  inclusive _bootstrap                                    5   35.7 %
+  inclusive start (multiprocessing                        4   28.6 %
+  inclusive _launch                                       4   28.6 %
+  leaf      main                                          3   21.4 %
+  leaf      run                                           3   21.4 %
+  leaf      _send                                         2   14.3 %
+  leaf      _write                                        2   14.3 %
+  leaf      __call__                                      1    7.1 %
+  leaf      matches                                       1    7.1 %
+  leaf      read_signed                                   1    7.1 %
+  leaf      _recv                                         1    7.1 %
